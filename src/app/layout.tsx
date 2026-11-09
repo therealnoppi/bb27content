@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { siteConfig } from "@/lib/config";
-// @ts-expect-error CSS imports are handled by Next.js.
 import "./globals.css";
 
 export const metadata: Metadata = {
