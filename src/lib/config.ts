@@ -86,53 +86,6 @@ export const roadmapSteps: RoadmapStepConfig[] = [
   },
 ];
 
-export type PreviewConfig =
-  | {
-      id: string;
-      title: string;
-      description: string;
-      kind: "image";
-      imageUrl: string;
-      label: string;
-    }
-  | {
-      id: string;
-      title: string;
-      description: string;
-      kind: "youtube" | "vimeo";
-      videoId: string;
-      label: string;
-    }
-  | {
-      id: string;
-      title: string;
-      description: string;
-      kind: "link";
-      href: string;
-      label: string;
-    };
-
-export const previews: PreviewConfig[] = [
-  {
-    id: "concert-impression",
-    title: "Bühne, Ensemble & Konzertatmosphäre",
-    description:
-      "Visuelle Referenz für Konzertkommunikation und die spätere Dokumentation des Bigband-Auftritts.",
-    kind: "image",
-    imageUrl: "/images/custom-project-hero.jpg",
-    label: "Bildsprache & Dokumentation",
-  },
-  {
-    id: "repertoire",
-    title: "Noten & Repertoire entdecken",
-    description:
-      "Eine umfangreiche Sammlung gemeinfreier Noten als Ausgangspunkt für die Repertoire-Recherche.",
-    kind: "link",
-    href: "https://imslp.org/",
-    label: "Musikressource",
-  },
-];
-
 export type TrafficStatus = "green" | "yellow" | "red";
 
 export const statusLabels: Record<TrafficStatus, string> = {

@@ -1,12 +1,12 @@
 # BigBand 2027 Content – Interaktive Projekt-Roadmap
 
-Ein hochwertiger, responsiver Projektraum mit passwortgeschützter Roadmap, fünf konfigurierbaren Meilensteinen, Kommentaren, Statusänderungen nur für Administratoren und einer Inspirationssammlung. Next.js-Route-Handler übernehmen alle privilegierten Supabase-Zugriffe serverseitig.
+Ein hochwertiger, responsiver Projektraum mit passwortgeschützter Roadmap, fünf konfigurierbaren Meilensteinen, Kommentaren, Statusänderungen nur für Administratoren und einer Dokumentenablage für PDFs und Links. Next.js-Route-Handler übernehmen alle privilegierten Supabase-Zugriffe serverseitig.
 
 ## Voraussetzungen
 
 - Node.js 22 oder neuer
 - npm
-- Ein Supabase-Projekt für die dauerhafte Speicherung von Kommentaren und Status
+- Ein Supabase-Projekt für die dauerhafte Speicherung von Kommentaren, Status, PDFs und Links
 
 ## 1. Projekt auf GitHub veröffentlichen
 
@@ -64,8 +64,8 @@ npm run build
 
 1. Erstelle ein Supabase-Projekt.
 2. Öffne **Project Settings → API** und kopiere die Projekt-URL sowie den `service_role`-Schlüssel.
-3. Öffne den **SQL Editor**, füge den Inhalt von [`supabase/migrations/20261109000000_create_roadmap_tables.sql`](./supabase/migrations/20261109000000_create_roadmap_tables.sql) ein und führe das SQL aus.
-4. Die Migration erstellt Status- und Kommentartabellen, aktiviert Row Level Security und verweigert direkten Tabellenzugriff für `anon` und `authenticated`. Der Server nutzt den Service-Role-Key ausschließlich in geschützten API-Anfragen.
+3. Öffne den **SQL Editor** und führe beide Migrationen in der Reihenfolge aus: [`20261109000000_create_roadmap_tables.sql`](./supabase/migrations/20261109000000_create_roadmap_tables.sql), danach [`20261110000000_create_document_library.sql`](./supabase/migrations/20261110000000_create_document_library.sql).
+4. Die Migrationen erstellen Status-, Kommentar- und Dokumenttabellen, aktivieren Row Level Security und verweigern direkten Tabellenzugriff für `anon` und `authenticated`. Die Dokumenten-Migration legt außerdem einen privaten Storage-Bucket an und setzt Datenbanklimits von zehn PDFs und 15 Links durch. Der Server nutzt den Service-Role-Key ausschließlich in geschützten API-Anfragen.
 
 Der Service-Role-Key darf weder im Browsercode verwendet noch in das Repository eingecheckt werden.
 
@@ -95,7 +95,6 @@ Bearbeite [`src/lib/config.ts`](./src/lib/config.ts):
 
 - `siteConfig` enthält Projektnamen, Einleitung, Logo, Titelgrafik und Farbpalette.
 - `roadmapSteps` enthält genau fünf Produktionsphasen mit ID, Titel, Beschreibung, Monat, Jahr, Reihenfolge und Icon. Wenn du IDs änderst, müssen auch die Statuszeilen in der SQL-Migration angepasst werden.
-- `previews` konfiguriert Vorschaukarten. Für YouTube und Vimeo werden die jeweiligen Video-IDs verwendet; externe Seiten werden als Link-Karten angezeigt. Ungeprüfter HTML-Code wird nicht eingebunden.
 
 Der Monat ist eine Zahl von 1 bis 12. In der Roadmap wird ausschließlich Monat und Jahr dargestellt. Die aktuelle Planung läuft von November 2026 bis März 2027 und umfasst Strategie, Redaktionsplanung, Content-Produktion, Kampagne sowie Konzertkommunikation und Dokumentation. Ampelstatus und Kommentare sind von diesen statischen Texten unabhängig und werden dauerhaft in Supabase gespeichert.
 
@@ -103,28 +102,22 @@ Der Monat ist eine Zahl von 1 bis 12. In der Roadmap wird ausschließlich Monat 
 
 Das Konzert-Titelbild liegt unter [`public/images/custom-project-hero.jpg`](./public/images/custom-project-hero.jpg). Ersetze die Datei, wenn du ein anderes Motiv einsetzen möchtest. Das Logo liegt als SVG in [`public/images/mark.svg`](./public/images/mark.svg). Die zentralen Farbwerte für Bühne, Akzente, Flächen und Text werden unter `siteConfig.colors` in [`src/lib/config.ts`](./src/lib/config.ts) gepflegt und als CSS-Variablen in der gesamten Website eingesetzt.
 
-## 8. Vorschauen, Links und Videos
+## 8. Dokumentenablage
 
-Ergänze oder bearbeite Einträge im Array `previews` in `src/lib/config.ts`:
-
-- YouTube: `kind: "youtube"` und die Video-ID, nicht die Embed-URL
-- Vimeo: `kind: "vimeo"` und die numerische Video-ID
-- Externe Referenz: `kind: "link"` und eine `https://`-URL
-
-Die Website erzeugt sichere Embed-URLs für `youtube-nocookie.com` und `player.vimeo.com`. Die Content Security Policy erlaubt nur diese Video-Hosts. Externe Links öffnen sich mit `noopener noreferrer` in einem neuen Tab.
+Administratoren können in der Dokumentenablage PDFs bis 25 MB hinzufügen, vorhandene PDFs durch neue Versionen ersetzen, PDFs löschen und HTTPS-Links verwalten. Besucher können PDFs herunterladen und Links öffnen. Die Datenbank setzt die Höchstgrenzen von zehn PDFs und 15 Links auch bei parallelen Änderungen serverseitig durch. PDF-Dateien liegen in einem privaten Supabase-Storage-Bucket; Downloads werden nur nach Anmeldung über kurzlebige signierte URLs freigegeben.
 
 ## 9. Deployment mit Vercel
 
 1. Lade das Projekt in ein privates oder öffentliches Git-Repository.
 2. Importiere das Repository in Vercel und wähle Next.js als Framework.
 3. Hinterlege alle fünf Umgebungsvariablen in den Vercel-Projekteinstellungen für die gewünschten Umgebungen.
-4. Führe die Supabase-Migration vor dem Deployment aus.
+4. Führe beide Supabase-Migrationen vor dem Deployment aus.
 5. Wähle **Node.js 22.x** als Runtime, falls Vercel nach der Node-Version fragt, und deploye. Ein zusätzlicher API-Server ist nicht erforderlich.
 
 ## 10. Was du für den Livebetrieb brauchst
 
 - Die GitHub-Repository-URL und einen erfolgreichen CI-Lauf.
-- Ein eingerichtetes Supabase-Projekt mit ausgeführter Migration.
+- Ein eingerichtetes Supabase-Projekt mit beiden ausgeführten Migrationen.
 - Die fünf echten Umgebungsvariablen in den Vercel-Projekteinstellungen. Verwende unterschiedliche Besucher- und Adminpasswörter sowie einen individuellen `SESSION_SECRET`.
 - Einen Vercel-Deployment-Status **Ready**. Teste danach Besucher-Login, Admin-Login, einen Kommentar und eine Statusänderung.
 

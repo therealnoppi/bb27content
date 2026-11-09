@@ -1,29 +1,32 @@
 "use client";
 
 import {
-  ArrowDownRight,
   ArrowRight,
-  ArrowUpRight,
   CalendarDays,
-  Check,
   ChevronRight,
   Compass,
-  ExternalLink,
+  Download,
+  FileText,
   Flag,
   Layers3,
+  Link as LinkIcon,
   LockKeyhole,
   LogOut,
   MessageCircle,
+  Plus,
   Rocket,
   Send,
   ShieldCheck,
   Sparkles,
+  RefreshCw,
+  Trash2,
+  Upload,
+  Users,
   X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import {
-  previews,
   siteConfig,
   statusLabels,
   type RoadmapStepConfig,
@@ -38,7 +41,16 @@ type Comment = {
   created_at: string;
 };
 type Step = RoadmapStepConfig & { status: TrafficStatus; comments: Comment[] };
-type Tab = "roadmap" | "preview";
+type Tab = "roadmap" | "documents";
+type DocumentEntry = {
+  id: string;
+  kind: "pdf" | "link";
+  title: string;
+  filename: string | null;
+  url: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 const iconMap = {
   compass: Compass,
@@ -72,9 +84,40 @@ function safeExternalHref(value: string) {
   }
 }
 
+async function uploadPdfFile(file: File) {
+  const signedResponse = await fetch("/api/documents/upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename: file.name, size: file.size }),
+  });
+  if (!signedResponse.ok) throw new Error(await responseError(signedResponse));
+  const signed = (await signedResponse.json()) as {
+    storage_path: string;
+    filename: string;
+    signedUrl: string;
+  };
+  const uploadResponse = await fetch(signed.signedUrl, {
+    method: "PUT",
+    headers: { "Content-Type": "application/pdf" },
+    body: file,
+  });
+  if (!uploadResponse.ok) throw new Error("Der PDF-Upload in den privaten Speicher ist fehlgeschlagen.");
+  return { filename: signed.filename, storage_path: signed.storage_path };
+}
+
+async function discardUploadedPdf(storagePath: string) {
+  const response = await fetch("/api/documents/upload", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ storage_path: storagePath }),
+  });
+  if (!response.ok) throw new Error(await responseError(response));
+}
+
 export function RoadmapApp() {
   const [role, setRole] = useState<"visitor" | "admin" | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
+  const [documents, setDocuments] = useState<DocumentEntry[]>([]);
   const [selected, setSelected] = useState<Step | null>(null);
   const [tab, setTab] = useState<Tab>("roadmap");
   const [error, setError] = useState("");
@@ -91,17 +134,29 @@ export function RoadmapApp() {
     }
   }, []);
 
+  const loadDocuments = useCallback(async () => {
+    try {
+      const response = await fetch("/api/documents", { cache: "no-store" });
+      if (!response.ok) throw new Error(await responseError(response));
+      const data = (await response.json()) as { documents: DocumentEntry[] };
+      setDocuments(data.documents);
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Die Ablage konnte nicht geladen werden.");
+    }
+  }, []);
+
   useEffect(() => {
     fetch("/api/auth/session", { cache: "no-store" })
       .then(async (response) => response.json())
       .then(async (session: { authenticated: boolean; role: "visitor" | "admin" | null }) => {
         if (session.authenticated && session.role) {
           setRole(session.role);
-          await loadRoadmap();
+          await Promise.all([loadRoadmap(), loadDocuments()]);
         }
       })
       .catch(() => setError("Die Sitzung konnte nicht geprüft werden. Bitte lade die Seite erneut."));
-  }, [loadRoadmap]);
+  }, [loadDocuments, loadRoadmap]);
 
   useEffect(() => {
     if (!selected) return;
@@ -126,6 +181,18 @@ export function RoadmapApp() {
     if (current >= last) return 100;
     return Math.round(((current - first) / (last - first)) * 100);
   }, [steps]);
+  const commenters = useMemo(() => {
+    const names = new Map<string, { name: string; count: number }>();
+    for (const step of steps) {
+      for (const comment of step.comments) {
+        const key = comment.name.trim().toLocaleLowerCase("de-DE");
+        const current = names.get(key);
+        if (current) current.count += 1;
+        else names.set(key, { name: comment.name.trim(), count: 1 });
+      }
+    }
+    return Array.from(names.values()).sort((a, b) => a.name.localeCompare(b.name, "de"));
+  }, [steps]);
 
   async function handleLogin(password: string, loginRole: "visitor" | "admin") {
     const response = await fetch("/api/auth/login", {
@@ -137,7 +204,7 @@ export function RoadmapApp() {
     const data = (await response.json()) as { role: "visitor" | "admin" };
     setRole(data.role);
     setError("");
-    await loadRoadmap();
+    await Promise.all([loadRoadmap(), loadDocuments()]);
   }
 
   async function logout() {
@@ -150,6 +217,7 @@ export function RoadmapApp() {
       if (!data.authenticated) {
         setSelected(null);
         setSteps([]);
+        setDocuments([]);
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Die Sitzung konnte nicht beendet werden.");
@@ -285,11 +353,40 @@ export function RoadmapApp() {
 
         {error && <Notice message={error} onClose={() => setError("")} />}
 
-        <section className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <SummaryCard label="Produktionsphasen" value={String(steps.length).padStart(2, "0")} icon={<Flag size={17} />} detail="von der Strategie bis zum Konzert-Rückblick" />
-          <SummaryCard label="Im Plan" value={String(counts.green).padStart(2, "0")} tone="green" detail="läuft in die richtige Richtung" />
-          <SummaryCard label="Im Blick" value={String(counts.yellow).padStart(2, "0")} tone="yellow" detail="verdient unsere Aufmerksamkeit" />
-          <SummaryCard label="Kritisch" value={String(counts.red).padStart(2, "0")} tone="red" detail="braucht eine genaue Prüfung" />
+        <section className="mt-7 grid gap-4">
+          <div className="rounded-[22px] border border-line bg-white p-6">
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted">Statusübersicht</p>
+            <div className="mt-5 space-y-4">
+              <StatusBar label="Im Plan" value={counts.green} total={steps.length} tone="green" />
+              <StatusBar label="Im Blick" value={counts.yellow} total={steps.length} tone="yellow" />
+              <StatusBar label="Kritisch" value={counts.red} total={steps.length} tone="red" />
+            </div>
+          </div>
+          <div className="rounded-[22px] border border-line bg-white p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted">Stimmen aus dem Team</p>
+                <h2 className="mt-1 text-lg font-semibold tracking-tight text-ink">Wer hat kommentiert?</h2>
+              </div>
+              <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#eff5ef] px-3 py-1.5 text-xs font-semibold text-forest">
+                <Users size={14} /> {commenters.length} {commenters.length === 1 ? "Person" : "Personen"}
+              </span>
+            </div>
+            {commenters.length ? (
+              <ul className="mt-4 flex flex-wrap gap-2">
+                {commenters.map(({ name, count }) => (
+                  <li key={name.toLocaleLowerCase("de-DE")} className="flex items-center gap-2 rounded-full border border-line bg-[#fcfbf9] px-3 py-2 text-xs">
+                    <span className="font-semibold text-ink">{name}</span>
+                    <span className="rounded-full bg-[#f1f3f0] px-2 py-0.5 text-[10px] font-semibold text-muted">
+                      {count} {count === 1 ? "Kommentar" : "Kommentare"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-4 text-sm text-muted">Bisher hat noch niemand einen Kommentar abgegeben.</p>
+            )}
+          </div>
         </section>
 
         <section className="mt-8 rounded-[26px] border border-line bg-white/80 p-5 shadow-sm sm:p-7">
@@ -319,9 +416,9 @@ export function RoadmapApp() {
 
         <nav className="mt-10 flex gap-2 border-b border-line" aria-label="Projektbereiche">
           <TabButton active={tab === "roadmap"} onClick={() => setTab("roadmap")}>Roadmap</TabButton>
-          <TabButton active={tab === "preview"} onClick={() => setTab("preview")}>Preview</TabButton>
+          <TabButton active={tab === "documents"} onClick={() => setTab("documents")}>Dokumentenablage</TabButton>
           <span className="ml-auto hidden self-center text-xs text-muted sm:block">
-            {tab === "roadmap" ? "Gemeinsam im Blick, was als Nächstes kommt" : "Ideen, Referenzen & Inspiration"}
+            {tab === "roadmap" ? "Gemeinsam im Blick, was als Nächstes kommt" : "PDFs und wichtige Links an einem Ort"}
           </span>
         </nav>
 
@@ -381,101 +478,14 @@ export function RoadmapApp() {
                 })}
               </div>
             </div>
-            <aside className="space-y-4">
-              <div className="rounded-[22px] bg-[#f2e7da] p-6">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-forest">Gemeinsam auf der Bühne</p>
-                <p className="mt-2 text-xl font-semibold tracking-tight text-ink">Viele Stimmen. Ein Bigband-Sound.</p>
-                <p className="mt-2 text-sm leading-6 text-muted">Vom ersten Arrangement bis zum Konzertabend bringt jeder Beitrag die Musik ein Stück weiter.</p>
-                <div className="mt-5 flex items-center gap-2 text-xs font-medium text-forest">
-                  <ArrowDownRight size={15} /> Zusammen den nächsten Takt setzen
-                </div>
-              </div>
-              <div className="rounded-[22px] border border-line bg-white p-6">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted">Statusübersicht</p>
-                <div className="mt-5 space-y-4">
-                  <StatusBar label="Im Plan" value={counts.green} total={steps.length} tone="green" />
-                  <StatusBar label="Im Blick" value={counts.yellow} total={steps.length} tone="yellow" />
-                  <StatusBar label="Kritisch" value={counts.red} total={steps.length} tone="red" />
-                </div>
-                <div className="mt-5 flex items-center gap-2 border-t border-line pt-4 text-xs leading-5 text-muted">
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#f5ede3] text-forest"><Check size={13} /></span>
-                  Jede Phase bringt uns näher ans Publikum.
-                </div>
-              </div>
-            </aside>
           </section>
         ) : (
-          <section className="pt-8">
-            <div className="mb-7 max-w-[620px]">
-              <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-forest">Inspirationssammlung</p>
-              <h2 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-ink">Konzertmomente &amp; Repertoire.</h2>
-              <p className="mt-2 text-sm leading-6 text-muted">Ein Einblick in unseren Bigband-Sound und eine Musikressource zur Repertoire-Recherche.</p>
-            </div>
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {previews.map((preview) => (
-                <article key={preview.id} className="overflow-hidden rounded-[22px] border border-line bg-white shadow-sm">
-                  {preview.kind === "image" ? (
-                  <div className="relative aspect-video bg-[#eaf0e8]">
-                    <Image
-                      className="object-cover"
-                      src={preview.imageUrl}
-                      alt={preview.title}
-                      fill
-                      sizes="(max-width: 768px) 100vw, 33vw"
-                      unoptimized
-                    />
-                  </div>
-                  ) : preview.kind === "youtube" && /^[A-Za-z0-9_-]{11}$/.test(preview.videoId) ? (
-                    <div className="aspect-video bg-[#eaf0e8]">
-                      <iframe
-                        className="h-full w-full"
-                        src={`https://www.youtube-nocookie.com/embed/${preview.videoId}`}
-                        title={preview.title}
-                        loading="lazy"
-                        referrerPolicy="strict-origin-when-cross-origin"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        allowFullScreen
-                      />
-                    </div>
-                  ) : preview.kind === "vimeo" && /^\d+$/.test(preview.videoId) ? (
-                    <div className="aspect-video bg-[#eaf0e8]">
-                      <iframe
-                        className="h-full w-full"
-                        src={`https://player.vimeo.com/video/${preview.videoId}`}
-                        title={preview.title}
-                        loading="lazy"
-                        referrerPolicy="strict-origin-when-cross-origin"
-                        allow="autoplay; fullscreen; picture-in-picture"
-                        allowFullScreen
-                      />
-                    </div>
-                  ) : preview.kind === "link" && safeExternalHref(preview.href) ? (
-                    <a
-                      className="group flex aspect-video items-center justify-center bg-[#eaf0e8] text-forest"
-                      href={safeExternalHref(preview.href)!}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={`${preview.title} in einem neuen Tab öffnen`}
-                    >
-                      <span className="grid h-14 w-14 place-items-center rounded-full bg-white shadow-sm transition group-hover:scale-105"><ExternalLink size={20} /></span>
-                    </a>
-                  ) : (
-                    <div className="grid aspect-video place-items-center bg-[#f3f5f1] text-xs text-muted">Vorschau nicht verfügbar</div>
-                  )}
-                  <div className="p-5">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-forest">{preview.label}</span>
-                    <h3 className="mt-2 text-lg font-semibold tracking-tight text-ink">{preview.title}</h3>
-                    <p className="mt-2 text-sm leading-6 text-muted">{preview.description}</p>
-                    {preview.kind === "link" && safeExternalHref(preview.href) && (
-                      <a href={safeExternalHref(preview.href)!} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-forest hover:underline">
-                        Referenz ansehen <ArrowUpRight size={14} />
-                      </a>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
+          <DocumentLibrary
+            documents={documents}
+            isAdmin={role === "admin"}
+            onRefresh={loadDocuments}
+            setError={setError}
+          />
         )}
 
         <footer className="mt-14 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5 text-[11px] text-muted">
@@ -529,9 +539,16 @@ function UnlockScreen({
   return (
     <main className="grid min-h-screen place-items-center px-5 py-10" style={style}>
       <div className="grid w-full max-w-[1000px] overflow-hidden rounded-[30px] border border-line bg-white shadow-float md:grid-cols-[1.05fr_0.95fr]">
-        <section className="relative hidden min-h-[620px] overflow-hidden bg-[#193f35] p-11 text-white md:flex md:flex-col md:justify-between">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_35%_78%,rgba(216,243,106,0.19),transparent_45%)]" />
-          <Image className="absolute -bottom-5 -right-7 w-[95%] opacity-90" src={siteConfig.heroImage} alt="" width={440} height={350} unoptimized />
+        <section className="relative hidden min-h-[620px] overflow-hidden bg-[#322014] p-11 text-white md:flex md:flex-col md:justify-between">
+          <Image
+            className="object-cover object-[70%_center] opacity-80"
+            src={siteConfig.heroImage}
+            alt=""
+            fill
+            sizes="(max-width: 768px) 0px, 500px"
+            unoptimized
+          />
+          <div className="absolute inset-0 bg-gradient-to-br from-[#2e1b12]/90 via-[#3a2417]/70 to-[#4b2d1b]/65" />
           <a href="#" className="relative z-10 flex items-center gap-3">
             <Image className="h-10 w-10" src={siteConfig.logo} alt="" width={40} height={40} unoptimized />
             <span className="text-xs font-bold tracking-[0.16em]">{siteConfig.name.toUpperCase()}</span>
@@ -588,31 +605,6 @@ function UnlockScreen({
   );
 }
 
-function SummaryCard({
-  label,
-  value,
-  detail,
-  icon,
-  tone,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  icon?: React.ReactNode;
-  tone?: TrafficStatus;
-}) {
-  return (
-    <div className="rounded-[20px] border border-line bg-white/85 p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-muted">{label}</span>
-        {tone ? <span className={`status-dot h-2.5 w-2.5 rounded-full status-${tone}`} /> : <span className="text-forest">{icon}</span>}
-      </div>
-      <p className="mt-3 text-[30px] font-semibold leading-none tracking-[-0.04em] text-ink">{value}</p>
-      <p className="mt-2 text-[11px] text-muted">{detail}</p>
-    </div>
-  );
-}
-
 function StatusBar({
   label,
   value,
@@ -633,6 +625,250 @@ function StatusBar({
         <div className={`h-1.5 rounded-full status-${tone} transition-[width] duration-500`} style={{ width: `${total ? (value / total) * 100 : 0}%` }} />
       </div>
     </div>
+  );
+}
+
+function DocumentLibrary({
+  documents,
+  isAdmin,
+  onRefresh,
+  setError,
+}: {
+  documents: DocumentEntry[];
+  isAdmin: boolean;
+  onRefresh: () => Promise<void>;
+  setError: (message: string) => void;
+}) {
+  const [busy, setBusy] = useState("");
+  const [linkTitle, setLinkTitle] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const pdfs = documents.filter((document) => document.kind === "pdf");
+  const links = documents.filter((document) => document.kind === "link");
+
+  async function addPdf(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const file = formData.get("file");
+    if (!(file instanceof File)) {
+      setError("Bitte wähle eine PDF-Datei aus.");
+      return;
+    }
+    setError("");
+    setBusy("new-pdf");
+    let uploadedPath = "";
+    try {
+      const uploaded = await uploadPdfFile(file);
+      uploadedPath = uploaded.storage_path;
+      const response = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "pdf",
+          title: formData.get("title"),
+          ...uploaded,
+        }),
+      });
+      if (!response.ok) throw new Error(await responseError(response));
+      uploadedPath = "";
+      form.reset();
+      await onRefresh();
+    } catch (cause) {
+      let message = cause instanceof Error ? cause.message : "Die PDF konnte nicht abgelegt werden.";
+      if (uploadedPath) {
+        try {
+          await discardUploadedPdf(uploadedPath);
+        } catch (cleanupCause) {
+          message += ` Die unvollständige Datei konnte nicht entfernt werden: ${cleanupCause instanceof Error ? cleanupCause.message : "unbekannter Fehler"}`;
+        }
+      }
+      setError(message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function addLink(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setBusy("new-link");
+    try {
+      const response = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "link", title: linkTitle, url: linkUrl }),
+      });
+      if (!response.ok) throw new Error(await responseError(response));
+      setLinkTitle("");
+      setLinkUrl("");
+      await onRefresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Der Link konnte nicht gespeichert werden.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function replacePdf(id: string, file: File | undefined) {
+    if (!file) return;
+    setError("");
+    setBusy(id);
+    let uploadedPath = "";
+    try {
+      const uploaded = await uploadPdfFile(file);
+      uploadedPath = uploaded.storage_path;
+      const response = await fetch(`/api/documents/${id}/file`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(uploaded),
+      });
+      if (!response.ok) throw new Error(await responseError(response));
+      uploadedPath = "";
+      const result = (await response.json()) as { warning?: string };
+      await onRefresh();
+      if (result.warning) setError(result.warning);
+    } catch (cause) {
+      let message = cause instanceof Error ? cause.message : "Die PDF-Version konnte nicht ersetzt werden.";
+      if (uploadedPath) {
+        try {
+          await discardUploadedPdf(uploadedPath);
+        } catch (cleanupCause) {
+          message += ` Die unvollständige Datei konnte nicht entfernt werden: ${cleanupCause instanceof Error ? cleanupCause.message : "unbekannter Fehler"}`;
+        }
+      }
+      setError(message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function deleteDocument(document: DocumentEntry) {
+    if (!window.confirm(`„${document.title}“ wirklich löschen?`)) return;
+    setError("");
+    setBusy(document.id);
+    try {
+      const response = await fetch(`/api/documents/${document.id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error(await responseError(response));
+      await onRefresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Der Eintrag konnte nicht gelöscht werden.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <section className="pt-8">
+      <div className="mb-7 max-w-[700px]">
+        <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-forest">Projektmaterial</p>
+        <h2 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-ink">Dokumentenablage</h2>
+        <p className="mt-2 text-sm leading-6 text-muted">PDFs herunterladen, neue Versionen ablegen und wichtige Links gesammelt wiederfinden.</p>
+      </div>
+
+      <div className="mb-6 grid gap-3 sm:grid-cols-2">
+        <div className="flex items-center gap-3 rounded-2xl border border-line bg-white px-5 py-4">
+          <FileText size={18} className="text-forest" />
+          <span className="text-sm font-semibold text-ink">PDFs</span>
+          <span className="ml-auto text-xs text-muted">{pdfs.length} / 10</span>
+        </div>
+        <div className="flex items-center gap-3 rounded-2xl border border-line bg-white px-5 py-4">
+          <LinkIcon size={18} className="text-forest" />
+          <span className="text-sm font-semibold text-ink">Links</span>
+          <span className="ml-auto text-xs text-muted">{links.length} / 15</span>
+        </div>
+      </div>
+
+      {isAdmin && (
+        <div className="mb-7 grid gap-4 lg:grid-cols-2">
+          <form onSubmit={addPdf} className="rounded-[22px] border border-line bg-white p-5 sm:p-6">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-ink"><Upload size={16} className="text-forest" /> PDF hinzufügen</h3>
+            <label className="mb-2 mt-4 block text-xs font-semibold text-ink" htmlFor="pdf-title">Titel</label>
+            <input id="pdf-title" name="title" required maxLength={120} className="w-full rounded-xl border border-line px-3.5 py-2.5 text-sm" placeholder="z. B. Ablaufplan" />
+            <label className="mb-2 mt-3 block text-xs font-semibold text-ink" htmlFor="pdf-file">PDF-Datei (max. 25 MB)</label>
+            <input id="pdf-file" name="file" type="file" accept="application/pdf,.pdf" required className="w-full text-xs text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-[#eff5ef] file:px-3 file:py-2 file:text-xs file:font-semibold file:text-forest" />
+            <button disabled={busy !== "" || pdfs.length >= 10} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#174c3e] disabled:cursor-not-allowed disabled:opacity-50">
+              <Plus size={14} /> PDF speichern
+            </button>
+            {pdfs.length >= 10 && <p className="mt-2 text-xs text-muted">Das PDF-Limit ist erreicht.</p>}
+          </form>
+
+          <form onSubmit={addLink} className="rounded-[22px] border border-line bg-white p-5 sm:p-6">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-ink"><LinkIcon size={16} className="text-forest" /> Link hinzufügen</h3>
+            <label className="mb-2 mt-4 block text-xs font-semibold text-ink" htmlFor="link-title">Titel</label>
+            <input id="link-title" required maxLength={120} value={linkTitle} onChange={(event) => setLinkTitle(event.target.value)} className="w-full rounded-xl border border-line px-3.5 py-2.5 text-sm" placeholder="z. B. Konzert-Website" />
+            <label className="mb-2 mt-3 block text-xs font-semibold text-ink" htmlFor="link-url">HTTPS-Adresse</label>
+            <input id="link-url" type="url" required pattern="https://.*" value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} className="w-full rounded-xl border border-line px-3.5 py-2.5 text-sm" placeholder="https://…" />
+            <button disabled={busy !== "" || links.length >= 15} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#174c3e] disabled:cursor-not-allowed disabled:opacity-50">
+              <Plus size={14} /> Link speichern
+            </button>
+            {links.length >= 15 && <p className="mt-2 text-xs text-muted">Das Link-Limit ist erreicht.</p>}
+          </form>
+        </div>
+      )}
+
+      <div className="grid gap-7 lg:grid-cols-2">
+        <section>
+          <h3 className="mb-3 text-sm font-semibold text-ink">PDF-Dokumente</h3>
+          <div className="space-y-3">
+            {pdfs.length ? pdfs.map((document) => (
+              <article key={document.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-white p-4">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#eff5ef] text-forest"><FileText size={18} /></span>
+                <div className="min-w-0 flex-1">
+                  <h4 className="truncate text-sm font-semibold text-ink">{document.title}</h4>
+                  <p className="mt-1 truncate text-xs text-muted">{document.filename} · aktualisiert {new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(document.updated_at))}</p>
+                </div>
+                <a href={`/api/documents/${document.id}/download`} className="inline-flex items-center gap-1.5 rounded-lg bg-[#eff5ef] px-3 py-2 text-xs font-semibold text-forest hover:bg-[#e2eee2]">
+                  <Download size={14} /> Herunterladen
+                </a>
+                {isAdmin && (
+                  <>
+                    <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-xs font-semibold text-ink hover:bg-[#fcfbf9] ${busy ? "pointer-events-none opacity-50" : ""}`}>
+                      <RefreshCw size={13} /> Version ersetzen
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        className="sr-only"
+                        disabled={busy !== ""}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          void replacePdf(document.id, file);
+                        }}
+                      />
+                    </label>
+                    <button disabled={busy !== ""} onClick={() => deleteDocument(document)} className="rounded-lg p-2 text-[#a75c53] hover:bg-[#fff0ed] disabled:opacity-50" aria-label={`${document.title} löschen`}>
+                      <Trash2 size={15} />
+                    </button>
+                  </>
+                )}
+              </article>
+            )) : <p className="rounded-2xl border border-dashed border-line bg-white p-5 text-sm text-muted">Noch keine PDFs abgelegt.</p>}
+          </div>
+        </section>
+
+        <section>
+          <h3 className="mb-3 text-sm font-semibold text-ink">Links</h3>
+          <div className="space-y-3">
+            {links.length ? links.map((document) => (
+              <article key={document.id} className="flex items-center gap-3 rounded-2xl border border-line bg-white p-4">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#eff5ef] text-forest"><LinkIcon size={18} /></span>
+                <div className="min-w-0 flex-1">
+                  <h4 className="truncate text-sm font-semibold text-ink">{document.title}</h4>
+                  <a href={safeExternalHref(document.url ?? "") ?? undefined} target="_blank" rel="noopener noreferrer" className="mt-1 block truncate text-xs text-muted hover:text-forest">
+                    {document.url}
+                  </a>
+                </div>
+                {isAdmin && (
+                  <button disabled={busy !== ""} onClick={() => deleteDocument(document)} className="rounded-lg p-2 text-[#a75c53] hover:bg-[#fff0ed] disabled:opacity-50" aria-label={`${document.title} löschen`}>
+                    <Trash2 size={15} />
+                  </button>
+                )}
+              </article>
+            )) : <p className="rounded-2xl border border-dashed border-line bg-white p-5 text-sm text-muted">Noch keine Links abgelegt.</p>}
+          </div>
+        </section>
+      </div>
+    </section>
   );
 }
 
