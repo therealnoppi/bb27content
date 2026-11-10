@@ -1,8 +1,13 @@
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
-export type SessionRole = "visitor" | "admin";
-type SessionPayload = { role: SessionRole; expiresAt: number };
+export type SessionRole = "member" | "admin";
+type SessionPayload =
+  | { role: "visitor"; expiresAt: number }
+  | { role: "admin"; expiresAt: number }
+  | { role: "member"; expiresAt: number; userId: string };
+export type ActiveSession = Exclude<SessionPayload, { role: "visitor" }>;
 
 export const SESSION_COOKIE = "northstar_session";
 const SESSION_DURATION_SECONDS = 60 * 60 * 24 * 7;
@@ -19,11 +24,15 @@ function sign(value: string) {
   return createHmac("sha256", getSessionSecret()).update(value).digest("base64url");
 }
 
-export function createSessionToken(role: SessionRole) {
-  const payload: SessionPayload = {
-    role,
-    expiresAt: Math.floor(Date.now() / 1000) + SESSION_DURATION_SECONDS,
-  };
+export function createSessionToken(role: SessionRole, userId?: string) {
+  const expiresAt = Math.floor(Date.now() / 1000) + SESSION_DURATION_SECONDS;
+  let payload: SessionPayload;
+  if (role === "member") {
+    if (!userId) throw new Error("Member sessions require a user ID.");
+    payload = { role, userId, expiresAt };
+  } else {
+    payload = { role, expiresAt };
+  }
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   return `${encoded}.${sign(encoded)}`;
 }
@@ -34,16 +43,10 @@ function constantTimeEqual(left: string, right: string) {
   return timingSafeEqual(leftDigest, rightDigest);
 }
 
-export function authenticatePassword(password: string, role: SessionRole) {
-  const expected =
-    role === "admin" ? process.env.ADMIN_PASSWORD : process.env.SITE_PASSWORD;
+export function authenticatePassword(password: string, role: "admin") {
+  const expected = process.env.ADMIN_PASSWORD;
   if (!expected) {
-    throw new Error(
-      `${role === "admin" ? "ADMIN_PASSWORD" : "SITE_PASSWORD"} is not configured.`,
-    );
-  }
-  if (role === "admin" && expected === process.env.SITE_PASSWORD) {
-    throw new Error("ADMIN_PASSWORD and SITE_PASSWORD must be different.");
+    throw new Error("ADMIN_PASSWORD is not configured.");
   }
   return constantTimeEqual(password, expected);
 }
@@ -61,9 +64,10 @@ export function readSessionToken(token?: string | null): SessionPayload | null {
       Buffer.from(encoded, "base64url").toString("utf8"),
     ) as SessionPayload;
     if (
-      (payload.role !== "visitor" && payload.role !== "admin") ||
       !Number.isInteger(payload.expiresAt) ||
-      payload.expiresAt <= Math.floor(Date.now() / 1000)
+      payload.expiresAt <= Math.floor(Date.now() / 1000) ||
+      (payload.role !== "visitor" && payload.role !== "member" && payload.role !== "admin") ||
+      (payload.role === "member" && !payload.userId)
     ) {
       return null;
     }
@@ -73,8 +77,19 @@ export function readSessionToken(token?: string | null): SessionPayload | null {
   }
 }
 
-export async function getSession() {
-  return readSessionToken((await cookies()).get(SESSION_COOKIE)?.value);
+export async function getSession(): Promise<ActiveSession | null> {
+  const session = readSessionToken((await cookies()).get(SESSION_COOKIE)?.value);
+  if (!session || session.role === "visitor") return null;
+  if (session.role !== "member" || !session.userId) return session;
+
+  const { data, error } = await getSupabaseAdmin()
+    .from("v2_users")
+    .select("id")
+    .eq("id", session.userId)
+    .eq("active", true)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? session : null;
 }
 
 export function sessionCookieOptions() {

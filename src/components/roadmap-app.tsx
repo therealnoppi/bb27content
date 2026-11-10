@@ -32,6 +32,12 @@ import {
   type RoadmapStepConfig,
   type TrafficStatus,
 } from "@/lib/config";
+import {
+  AccessManagement,
+  ActivityFeed,
+  CalendarWorkspace,
+  FileRequestPanel,
+} from "@/components/team-features";
 
 type Comment = {
   id: string;
@@ -41,7 +47,8 @@ type Comment = {
   created_at: string;
 };
 type Step = RoadmapStepConfig & { status: TrafficStatus; comments: Comment[] };
-type Tab = "roadmap" | "documents";
+type Tab = "roadmap" | "documents" | "calendar" | "access";
+type Role = "member" | "admin";
 type DocumentEntry = {
   id: string;
   kind: "pdf" | "link";
@@ -115,12 +122,16 @@ async function discardUploadedPdf(storagePath: string) {
 }
 
 export function RoadmapApp() {
-  const [role, setRole] = useState<"visitor" | "admin" | null>(null);
+  const [role, setRole] = useState<Role | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
   const [documents, setDocuments] = useState<DocumentEntry[]>([]);
   const [selected, setSelected] = useState<Step | null>(null);
   const [tab, setTab] = useState<Tab>("roadmap");
   const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [activityRefresh, setActivityRefresh] = useState(0);
+  const refreshActivity = useCallback(() => setActivityRefresh((current) => current + 1), []);
 
   const loadRoadmap = useCallback(async () => {
     try {
@@ -149,9 +160,10 @@ export function RoadmapApp() {
   useEffect(() => {
     fetch("/api/auth/session", { cache: "no-store" })
       .then(async (response) => response.json())
-      .then(async (session: { authenticated: boolean; role: "visitor" | "admin" | null }) => {
+      .then(async (session: { authenticated: boolean; role: Role | null; name?: string | null }) => {
         if (session.authenticated && session.role) {
           setRole(session.role);
+          setDisplayName(session.name ?? null);
           await Promise.all([loadRoadmap(), loadDocuments()]);
         }
       })
@@ -194,15 +206,16 @@ export function RoadmapApp() {
     return Array.from(names.values()).sort((a, b) => a.name.localeCompare(b.name, "de"));
   }, [steps]);
 
-  async function handleLogin(password: string, loginRole: "visitor" | "admin") {
+  async function handleLogin(password: string, loginRole: Role, username?: string) {
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password, role: loginRole }),
+      body: JSON.stringify({ password, role: loginRole, ...(username ? { username } : {}) }),
     });
     if (!response.ok) throw new Error(await responseError(response));
-    const data = (await response.json()) as { role: "visitor" | "admin" };
+    const data = (await response.json()) as { role: Role; name?: string };
     setRole(data.role);
+    setDisplayName(data.name ?? null);
     setError("");
     await Promise.all([loadRoadmap(), loadDocuments()]);
   }
@@ -213,12 +226,11 @@ export function RoadmapApp() {
       const response = await fetch("/api/auth/logout", { method: "POST" });
       if (!response.ok) throw new Error(await responseError(response));
       const data = (await response.json()) as { authenticated: boolean };
-      setRole(data.authenticated ? "visitor" : null);
-      if (!data.authenticated) {
-        setSelected(null);
-        setSteps([]);
-        setDocuments([]);
-      }
+      setRole(null);
+      setDisplayName(null);
+      setSelected(null);
+      setSteps([]);
+      setDocuments([]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Die Sitzung konnte nicht beendet werden.");
     }
@@ -235,6 +247,7 @@ export function RoadmapApp() {
     setSteps((current) =>
       current.map((step) => (step.id === stepId ? { ...step, status } : step)),
     );
+    refreshActivity();
   }
 
   async function addComment(stepId: string, comment: Comment) {
@@ -245,6 +258,7 @@ export function RoadmapApp() {
           : step,
       ),
     );
+    refreshActivity();
   }
 
   async function deleteComment(stepId: string, commentId: string) {
@@ -257,6 +271,7 @@ export function RoadmapApp() {
           : step,
       ),
     );
+    refreshActivity();
   }
 
   const cssVars = {
@@ -305,10 +320,10 @@ export function RoadmapApp() {
             <button
               onClick={logout}
               className="flex items-center gap-2 rounded-full border border-line bg-white/70 px-3.5 py-2 text-xs font-semibold text-ink transition hover:bg-white"
-              aria-label={role === "admin" ? "Admin-Modus verlassen" : "Projekt sperren"}
+              aria-label={role === "admin" ? "Administrator abmelden" : role === "member" ? "Teamzugang abmelden" : "Projekt sperren"}
             >
               <LogOut size={14} />
-              <span>{role === "admin" ? "Admin beenden" : "Sperren"}</span>
+              <span>{role === "admin" ? "Abmelden" : role === "member" ? "Abmelden" : "Sperren"}</span>
             </button>
           </div>
         </header>
@@ -417,8 +432,10 @@ export function RoadmapApp() {
         <nav className="mt-10 flex gap-2 border-b border-line" aria-label="Projektbereiche">
           <TabButton active={tab === "roadmap"} onClick={() => setTab("roadmap")}>Roadmap</TabButton>
           <TabButton active={tab === "documents"} onClick={() => setTab("documents")}>Dokumentenablage</TabButton>
+          <TabButton active={tab === "calendar"} onClick={() => setTab("calendar")}>Kalender</TabButton>
+          {role === "admin" && <TabButton active={tab === "access"} onClick={() => setTab("access")}>Zugänge</TabButton>}
           <span className="ml-auto hidden self-center text-xs text-muted sm:block">
-            {tab === "roadmap" ? "Gemeinsam im Blick, was als Nächstes kommt" : "PDFs und wichtige Links an einem Ort"}
+            {tab === "roadmap" ? "Gemeinsam im Blick, was als Nächstes kommt" : tab === "documents" ? "PDFs und wichtige Links an einem Ort" : tab === "calendar" ? "Termine und Verfügbarkeiten abstimmen" : "Persönliche Teamzugänge verwalten"}
           </span>
         </nav>
 
@@ -479,14 +496,26 @@ export function RoadmapApp() {
               </div>
             </div>
           </section>
-        ) : (
+        ) : tab === "documents" ? (
           <DocumentLibrary
             documents={documents}
-            isAdmin={role === "admin"}
-            onRefresh={loadDocuments}
+            role={role}
+            onRefresh={async () => {
+              await loadDocuments();
+              refreshActivity();
+            }}
             setError={setError}
+            setMessage={setFeedback}
+            onChange={refreshActivity}
           />
+        ) : tab === "calendar" ? (
+          <CalendarWorkspace role={role} onChange={refreshActivity} onError={setError} onMessage={setFeedback} />
+        ) : (
+          <AccessManagement onChange={refreshActivity} onError={setError} onMessage={setFeedback} />
         )}
+
+        {feedback && <div role="status" className="mt-5 rounded-xl border border-[#d6e8d8] bg-[#f0f7f1] px-4 py-3 text-sm text-[#2c6948]">{feedback}</div>}
+        <ActivityFeed role={role} refreshKey={activityRefresh} onError={setError} />
 
         <footer className="mt-14 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5 text-[11px] text-muted">
           <span>{siteConfig.name} · Ein gemeinsamer Projektraum</span>
@@ -498,6 +527,7 @@ export function RoadmapApp() {
         <StepDialog
           step={selected}
           isAdmin={role === "admin"}
+          displayName={displayName}
           onClose={() => setSelected(null)}
           onStatusChange={updateStatus}
           onAddComment={addComment}
@@ -514,13 +544,14 @@ function UnlockScreen({
   setError,
   style,
 }: {
-  onLogin: (password: string, role: "visitor" | "admin") => Promise<void>;
+  onLogin: (password: string, role: Role, username?: string) => Promise<void>;
   error: string;
   setError: (message: string) => void;
   style: React.CSSProperties;
 }) {
   const [password, setPassword] = useState("");
-  const [mode, setMode] = useState<"visitor" | "admin">("visitor");
+  const [username, setUsername] = useState("");
+  const [mode, setMode] = useState<Role>("member");
   const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent) {
@@ -528,7 +559,7 @@ function UnlockScreen({
     setBusy(true);
     setError("");
     try {
-      await onLogin(password, mode);
+      await onLogin(password, mode, username);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to unlock the project.");
     } finally {
@@ -570,13 +601,31 @@ function UnlockScreen({
             <h2 className="mt-6 text-3xl font-semibold tracking-[-0.04em] text-ink">Ein geschützter Ort zum Planen.</h2>
             <p className="mt-2 text-sm leading-6 text-muted">Gib dein Passwort ein, um die Roadmap anzusehen und deine Gedanken zu teilen.</p>
           </div>
+          <p className="mb-5 rounded-xl bg-[#f7f5f1] px-4 py-3 text-xs leading-5 text-muted">
+            Der Besucherzugang wurde auf persönliche Teamkonten umgestellt. Wenn du mitarbeiten möchtest, wende dich bitte an die Projektleitung, um einen Zugang zu erhalten.
+          </p>
           <div className="mb-5 grid grid-cols-2 rounded-full bg-[#f1f3f0] p-1" role="tablist" aria-label="Zugangsart">
-            <button onClick={() => { setMode("visitor"); setError(""); }} className={`rounded-full py-2.5 text-xs font-semibold transition ${mode === "visitor" ? "bg-white text-ink shadow-sm" : "text-muted"}`} role="tab" aria-selected={mode === "visitor"}>Besucherzugang</button>
+            <button onClick={() => { setMode("member"); setError(""); }} className={`rounded-full py-2.5 text-xs font-semibold transition ${mode === "member" ? "bg-white text-ink shadow-sm" : "text-muted"}`} role="tab" aria-selected={mode === "member"}>Teamzugang</button>
             <button onClick={() => { setMode("admin"); setError(""); }} className={`rounded-full py-2.5 text-xs font-semibold transition ${mode === "admin" ? "bg-white text-ink shadow-sm" : "text-muted"}`} role="tab" aria-selected={mode === "admin"}>Adminzugang</button>
           </div>
           <form onSubmit={submit}>
+            {mode === "member" && (
+              <>
+                <label htmlFor="username" className="mb-2 block text-xs font-semibold text-ink">Benutzername</label>
+                <input
+                  id="username"
+                  required
+                  autoComplete="username"
+                  minLength={3}
+                  maxLength={32}
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  className="mb-4 w-full rounded-xl border border-line bg-white px-4 py-3.5 text-sm text-ink"
+                />
+              </>
+            )}
             <label htmlFor="password" className="mb-2 block text-xs font-semibold text-ink">
-              {mode === "admin" ? "Administratorpasswort" : "Projektpasswort"}
+              {mode === "admin" ? "Administratorpasswort" : "Persönliches Passwort"}
             </label>
             <input
               id="password"
@@ -591,7 +640,7 @@ function UnlockScreen({
             />
             {error && <p role="alert" className="mt-3 rounded-xl bg-[#fff0ed] px-3.5 py-3 text-xs leading-5 text-[#aa463c]">{error}</p>}
             <button disabled={busy} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-forest px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-[#174c3e] disabled:cursor-wait disabled:opacity-70">
-              {busy ? "Zugang wird geprüft…" : mode === "admin" ? "Als Administrator anmelden" : "Projekt freischalten"}
+              {busy ? "Zugang wird geprüft…" : mode === "admin" ? "Als Administrator anmelden" : "Als Teammitglied anmelden"}
               {!busy && <ArrowRight size={16} />}
             </button>
           </form>
@@ -630,15 +679,20 @@ function StatusBar({
 
 function DocumentLibrary({
   documents,
-  isAdmin,
+  role,
   onRefresh,
   setError,
+  setMessage,
+  onChange,
 }: {
   documents: DocumentEntry[];
-  isAdmin: boolean;
+  role: Role;
   onRefresh: () => Promise<void>;
   setError: (message: string) => void;
+  setMessage: (message: string) => void;
+  onChange: () => void;
 }) {
+  const isAdmin = role === "admin";
   const [busy, setBusy] = useState("");
   const [linkTitle, setLinkTitle] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
@@ -868,6 +922,12 @@ function DocumentLibrary({
           </div>
         </section>
       </div>
+      <FileRequestPanel
+        role={role}
+        onChange={onChange}
+        onError={setError}
+        onMessage={setMessage}
+      />
     </section>
   );
 }
@@ -905,6 +965,7 @@ function Notice({ message, onClose }: { message: string; onClose: () => void }) 
 function StepDialog({
   step,
   isAdmin,
+  displayName,
   onClose,
   onStatusChange,
   onAddComment,
@@ -912,12 +973,13 @@ function StepDialog({
 }: {
   step: Step;
   isAdmin: boolean;
+  displayName: string | null;
   onClose: () => void;
   onStatusChange: (id: string, status: TrafficStatus) => Promise<void>;
   onAddComment: (id: string, comment: Comment) => Promise<void>;
   onDeleteComment: (stepId: string, commentId: string) => Promise<void>;
 }) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(displayName ?? "");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
@@ -1072,16 +1134,22 @@ function StepDialog({
               <span className="text-xs text-muted">{step.comments.length} {step.comments.length === 1 ? "Kommentar" : "Kommentare"}</span>
             </div>
             <form onSubmit={submit} className="mt-4 rounded-2xl border border-line bg-white p-4 sm:p-5">
-              <label className="mb-2 block text-xs font-semibold text-ink" htmlFor="comment-name">Dein Name</label>
-              <input
-                id="comment-name"
-                required
-                maxLength={60}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Wie dürfen wir dich nennen?"
-                className="w-full rounded-lg border border-line px-3.5 py-3 text-sm text-ink placeholder:text-[#a0a9a2]"
-              />
+              {displayName ? (
+                <p className="mb-3 text-xs text-muted">Kommentar als <span className="font-semibold text-ink">{displayName}</span></p>
+              ) : (
+                <>
+                  <label className="mb-2 block text-xs font-semibold text-ink" htmlFor="comment-name">Dein Name</label>
+                  <input
+                    id="comment-name"
+                    required
+                    maxLength={60}
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="Wie dürfen wir dich nennen?"
+                    className="w-full rounded-lg border border-line px-3.5 py-3 text-sm text-ink placeholder:text-[#a0a9a2]"
+                  />
+                </>
+              )}
               <label className="mb-2 mt-4 block text-xs font-semibold text-ink" htmlFor="comment-message">Dein Kommentar</label>
               <textarea
                 id="comment-message"

@@ -14,7 +14,8 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   if (!isSameOrigin(request)) return jsonError("Diese Anfrage ist nicht zulässig.", 403);
-  if (!(await getSession())) return jsonError("Bitte schalte zuerst die Roadmap frei.", 401);
+  const session = await getSession();
+  if (!session) return jsonError("Bitte schalte zuerst die Roadmap frei.", 401);
   const { id } = await context.params;
   if (!roadmapSteps.some((step) => step.id === id)) {
     return jsonError("Roadmap-Schritt nicht gefunden.", 404);
@@ -28,11 +29,22 @@ export async function POST(
   }
 
   try {
+    let authorName = input.name;
+    if (session.role === "member" && session.userId) {
+      const { data: user, error: userError } = await supabase()
+        .from("v2_users")
+        .select("name")
+        .eq("id", session.userId)
+        .eq("active", true)
+        .single();
+      if (userError) throw userError;
+      authorName = user.name;
+    }
     const { data, error } = await supabase()
       .from("comments")
       .insert({
         step_id: id,
-        name: input.name,
+        name: authorName,
         message: input.message,
       })
       .select("id, step_id, name, message, created_at")

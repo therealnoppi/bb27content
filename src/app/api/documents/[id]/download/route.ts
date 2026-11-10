@@ -25,12 +25,17 @@ export async function GET(
     if (error) throw error;
     if (!document?.storage_path) return jsonError("PDF-Dokument nicht gefunden.", 404);
 
-    const { data: signedFile, error: signedUrlError } = await db.storage
+    const { data: file, error: downloadError } = await db.storage
       .from("project-documents")
-      .createSignedUrl(document.storage_path, 60, { download: document.filename ?? true });
-    if (signedUrlError) throw signedUrlError;
-    return NextResponse.redirect(signedFile.signedUrl, {
-      headers: { "Cache-Control": "no-store" },
+      .download(document.storage_path);
+    if (downloadError) throw downloadError;
+    return new NextResponse(file, {
+      headers: {
+        "Cache-Control": "private, no-store",
+        "Content-Disposition": `attachment; filename="document.pdf"; filename*=UTF-8''${encodeURIComponent(document.filename ?? "document.pdf")}`,
+        "Content-Type": "application/pdf",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
   } catch (error) {
     return databaseError(error);
