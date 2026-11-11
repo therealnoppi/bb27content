@@ -5,6 +5,14 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: `${siteConfig.name} — Projekt-Roadmap`,
   description: siteConfig.subtitle,
+  icons: {
+    icon: [
+      { url: "/favicon.ico", type: "image/x-icon" },
+      { url: "/images/project-icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/images/project-icon-512.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", type: "image/png", sizes: "180x180" }],
+  },
 };
 
 export default function RootLayout({

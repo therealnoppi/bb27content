@@ -59,6 +59,15 @@ html[data-theme="dark"] {
   box-sizing: border-box;
 }
 
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 html {
   min-width: 320px;
   background: var(--color-background);

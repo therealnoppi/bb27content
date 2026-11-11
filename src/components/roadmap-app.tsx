@@ -131,6 +131,7 @@ export function RoadmapApp() {
   const [documents, setDocuments] = useState<DocumentEntry[]>([]);
   const [selected, setSelected] = useState<Step | null>(null);
   const [tab, setTab] = useState<Tab>("roadmap");
+  const [mobileSearchExpanded, setMobileSearchExpanded] = useState(false);
   const [chatTargetId, setChatTargetId] = useState<string | undefined>();
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -326,8 +327,8 @@ export function RoadmapApp() {
               </span>
             </span>
           </a>
-          <div className="flex items-center gap-3">
-            <WorkspaceTools role={role} onNavigate={navigateToSection} />
+          <div className={`flex min-w-0 max-w-full items-center gap-3 ${mobileSearchExpanded ? "hide-scrollbar w-full flex-nowrap overflow-x-auto md:w-auto md:overflow-visible" : ""}`}>
+            <WorkspaceTools role={role} onNavigate={navigateToSection} onMobileSearchExpandedChange={setMobileSearchExpanded} />
             {role === "admin" ? (
               <span className="hidden items-center gap-1.5 rounded-full bg-[#e8f4eb] px-3 py-1.5 text-xs font-semibold text-forest sm:inline-flex">
                 <ShieldCheck size={14} /> Admin-Modus
@@ -335,7 +336,7 @@ export function RoadmapApp() {
             ) : null}
             <button
               onClick={logout}
-              className="flex items-center gap-2 rounded-full border border-line bg-white/70 px-3.5 py-2 text-xs font-semibold text-ink transition hover:bg-white"
+              className="flex shrink-0 items-center gap-2 rounded-full border border-line bg-white/70 px-3.5 py-2 text-xs font-semibold text-ink transition hover:bg-white"
               aria-label={role === "admin" ? "Administrator abmelden" : role === "member" ? "Teamzugang abmelden" : "Projekt sperren"}
             >
               <LogOut size={14} />
@@ -445,14 +446,14 @@ export function RoadmapApp() {
           </div>
         </section>
 
-        <nav className="mt-10 flex gap-2 border-b border-line" aria-label="Projektbereiche">
+        <nav className="hide-scrollbar mt-10 flex min-w-0 max-w-full gap-2 overflow-x-auto overflow-y-hidden border-b border-line" aria-label="Projektbereiche">
           <TabButton active={tab === "roadmap"} onClick={() => navigateToSection("roadmap")}>Roadmap</TabButton>
           <TabButton active={tab === "documents"} onClick={() => navigateToSection("documents")}>Dokumentenablage</TabButton>
           <TabButton active={tab === "calendar"} onClick={() => navigateToSection("calendar")}>Kalender</TabButton>
           <TabButton active={tab === "teamchat"} onClick={() => navigateToSection("teamchat")}>Teamchat</TabButton>
           <TabButton active={tab === "versions"} onClick={() => navigateToSection("versions")}>{role === "admin" ? "Versionsverwaltung" : "Versionshistorie"}</TabButton>
           {role === "admin" && <TabButton active={tab === "access"} onClick={() => navigateToSection("access")}>Zugänge</TabButton>}
-          <span className="ml-auto hidden self-center text-xs text-muted sm:block">
+          <span className="ml-auto hidden shrink-0 self-center text-xs text-muted sm:block">
             {tab === "roadmap" ? "Gemeinsam im Blick, was als Nächstes kommt" : tab === "documents" ? "PDFs und wichtige Links an einem Ort" : tab === "calendar" ? "Termine und Verfügbarkeiten abstimmen" : tab === "teamchat" ? "Im Team austauschen und auf Nachrichten antworten" : tab === "versions" ? role === "admin" ? "Änderungen für das Team veröffentlichen" : "Veröffentlichte Updates jederzeit nachlesen" : "Persönliche Teamzugänge verwalten"}
           </span>
         </nav>
@@ -969,11 +970,11 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`relative px-2 pb-3.5 text-sm font-semibold transition ${active ? "text-forest" : "text-muted hover:text-ink"}`}
+      className={`relative shrink-0 whitespace-nowrap px-2 pb-3.5 text-sm font-semibold transition ${active ? "text-forest" : "text-muted hover:text-ink"}`}
       aria-current={active ? "page" : undefined}
     >
       {children}
-      {active && <span className="absolute bottom-[-1px] left-0 right-0 h-[2px] rounded-full bg-forest" />}
+      {active && <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full bg-forest" />}
     </button>
   );
 }

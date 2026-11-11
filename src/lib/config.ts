@@ -4,7 +4,7 @@ export const siteConfig = {
     "Marketing, Content-Produktion und Konzertdokumentation – vom Konzept bis zum Konzert im März 2027.",
   subtitle:
     "Ein gemeinsamer Produktionsplan für die Vermarktung und Dokumentation unserer Bigbandkonzerte.",
-  logo: "/images/mark.svg",
+  logo: "/images/project-icon-512.png",
   heroImage: "/images/custom-project-hero.jpg",
   timelineLabel: "November 2026 – März 2027",
   colors: {

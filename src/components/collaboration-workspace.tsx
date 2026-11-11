@@ -21,6 +21,7 @@ type Theme = "light" | "dark" | "system";
 type Section = "roadmap" | "documents" | "calendar" | "access" | "teamchat";
 type SearchItem = { id: string; title: string; detail: string; section: Section; target?: string };
 type Notification = { id: string; title: string; description: string; href: string; created_at: string; read_at: string | null };
+type PopupPosition = { left: number; top: number; width: number; maxHeight: number };
 type ChatMessage = {
   id: string;
   sender_id: string | null;
@@ -53,6 +54,13 @@ function localTheme(): Theme {
   } catch {
     return "system";
   }
+}
+
+function popupPosition(anchor: DOMRect, maxWidth: number): PopupPosition {
+  const width = Math.min(maxWidth, window.innerWidth - 24);
+  const left = Math.max(12, Math.min(anchor.right - width, window.innerWidth - width - 12));
+  const top = Math.max(12, Math.min(anchor.bottom + 8, window.innerHeight - 180));
+  return { left, top, width, maxHeight: Math.max(0, window.innerHeight - top - 12) };
 }
 
 export function ThemeSelector({ role }: { role: "member" | "admin" | null }) {
@@ -106,9 +114,11 @@ export function ThemeSelector({ role }: { role: "member" | "admin" | null }) {
 export function WorkspaceTools({
   role,
   onNavigate,
+  onMobileSearchExpandedChange,
 }: {
   role: "member" | "admin";
   onNavigate: (section: Section, target?: string) => void;
+  onMobileSearchExpandedChange: (expanded: boolean) => void;
 }) {
   const [query, setQuery] = useState("");
   const [groups, setGroups] = useState<{ category: string; items: SearchItem[] }[]>([]);
@@ -119,7 +129,48 @@ export function WorkspaceTools({
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
   const [noticeError, setNoticeError] = useState("");
-  const searchRef = useRef<HTMLInputElement>(null);
+  const desktopSearchInputRef = useRef<HTMLInputElement>(null);
+  const mobileSearchInputRef = useRef<HTMLInputElement>(null);
+  const mobileSearchRef = useRef<HTMLDivElement>(null);
+  const desktopSearchRef = useRef<HTMLDivElement>(null);
+  const noticeButtonRef = useRef<HTMLButtonElement>(null);
+  const [searchPosition, setSearchPosition] = useState<PopupPosition | null>(null);
+  const [noticePosition, setNoticePosition] = useState<PopupPosition | null>(null);
+
+  const focusSearchInput = useCallback(() => {
+    const input = window.matchMedia("(min-width: 768px)").matches
+      ? desktopSearchInputRef.current
+      : mobileSearchInputRef.current;
+    input?.focus();
+  }, []);
+
+  useEffect(() => {
+    onMobileSearchExpandedChange(searchOpen);
+  }, [onMobileSearchExpandedChange, searchOpen]);
+
+  useEffect(() => {
+    if (!searchOpen && !noticeOpen) return;
+
+    const updatePopupPositions = () => {
+      if (searchOpen) {
+        const anchor = window.matchMedia("(min-width: 768px)").matches
+          ? desktopSearchRef.current
+          : mobileSearchRef.current;
+        if (anchor) setSearchPosition(popupPosition(anchor.getBoundingClientRect(), 540));
+      }
+      if (noticeOpen && noticeButtonRef.current) {
+        setNoticePosition(popupPosition(noticeButtonRef.current.getBoundingClientRect(), 360));
+      }
+    };
+
+    updatePopupPositions();
+    window.addEventListener("resize", updatePopupPositions);
+    window.addEventListener("scroll", updatePopupPositions, true);
+    return () => {
+      window.removeEventListener("resize", updatePopupPositions);
+      window.removeEventListener("scroll", updatePopupPositions, true);
+    };
+  }, [noticeOpen, searchOpen]);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -137,7 +188,7 @@ export function WorkspaceTools({
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setSearchOpen(true);
-        window.setTimeout(() => searchRef.current?.focus(), 0);
+        window.setTimeout(focusSearchInput, 0);
       }
       if (event.key === "Escape") {
         setSearchOpen(false);
@@ -146,7 +197,7 @@ export function WorkspaceTools({
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, []);
+  }, [focusSearchInput]);
 
   useEffect(() => {
     if (!searchOpen || query.trim().length < 2) {
@@ -212,11 +263,11 @@ export function WorkspaceTools({
   }
 
   return (
-    <div className="relative flex min-w-0 items-center gap-2 sm:gap-3">
-      <div className="relative hidden min-w-0 md:block">
+    <div className={`relative flex min-w-0 items-center gap-2 sm:gap-3 ${searchOpen ? "flex-1 md:flex-none" : ""}`}>
+      <div ref={desktopSearchRef} className="relative hidden min-w-0 md:block">
         <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={15} />
         <input
-          ref={searchRef}
+          ref={desktopSearchInputRef}
           value={query}
           onFocus={() => setSearchOpen(true)}
           onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }}
@@ -227,15 +278,42 @@ export function WorkspaceTools({
         />
         <kbd className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-line px-1 text-[9px] text-muted">Ctrl K</kbd>
       </div>
-      <button
-        type="button"
-        onClick={() => { setSearchOpen((open) => !open); window.setTimeout(() => searchRef.current?.focus(), 0); }}
-        className="grid h-9 w-9 place-items-center rounded-full border border-line bg-white/70 text-ink md:hidden"
-        aria-label="Suche öffnen"
-      ><Search size={16} /></button>
+      <div
+        ref={mobileSearchRef}
+        className={`flex shrink-0 items-center gap-2 overflow-hidden transition-[width] duration-300 ease-out md:hidden ${searchOpen ? "w-[min(58vw,230px)]" : "w-9"}`}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            if (searchOpen) {
+              setSearchOpen(false);
+              setQuery("");
+            } else {
+              setSearchOpen(true);
+              setNoticeOpen(false);
+              window.setTimeout(focusSearchInput, 0);
+            }
+          }}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line bg-white/70 text-ink"
+          aria-label={searchOpen ? "Suche schließen" : "Suche öffnen"}
+          aria-expanded={searchOpen}
+        ><Search size={16} /></button>
+        <input
+          ref={mobileSearchInputRef}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Suchen …"
+          aria-label="Projektinhalte durchsuchen"
+          tabIndex={searchOpen ? 0 : -1}
+          aria-hidden={!searchOpen}
+          style={{ backgroundColor: "var(--surface)", color: "var(--color-text)" }}
+          className={`h-9 min-w-0 flex-1 rounded-full border border-line px-3 text-xs outline-none transition-opacity duration-200 placeholder:text-muted ${searchOpen ? "opacity-100" : "w-0 border-0 p-0 opacity-0"}`}
+        />
+      </div>
       <div className="relative">
         <button
           type="button"
+          ref={noticeButtonRef}
           onClick={() => { setNoticeOpen((open) => !open); setSearchOpen(false); }}
           className="relative grid h-9 w-9 place-items-center rounded-full border border-line bg-white/70 text-ink"
           aria-label={`Benachrichtigungen${unread ? `, ${unread} ungelesen` : ""}`}
@@ -244,13 +322,16 @@ export function WorkspaceTools({
           <Bell size={16} />
           {unread > 0 && <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#b34335] px-1 text-center text-[9px] font-bold leading-4 text-white">{unread > 99 ? "99+" : unread}</span>}
         </button>
-        {noticeOpen && (
-          <div className="absolute right-0 top-12 z-40 w-[min(90vw,360px)] overflow-hidden rounded-2xl border border-line bg-white shadow-float">
+        {noticeOpen && noticePosition && (
+          <div
+            className="fixed z-40 overflow-hidden rounded-2xl border border-line bg-white shadow-float"
+            style={{ left: noticePosition.left, top: noticePosition.top, width: noticePosition.width, maxHeight: noticePosition.maxHeight }}
+          >
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
               <div><h2 className="text-sm font-semibold text-ink">Benachrichtigungen</h2><p className="text-[11px] text-muted">{unread} ungelesen</p></div>
               <button type="button" disabled={!unread} onClick={() => void markRead()} className="flex items-center gap-1 text-[11px] font-semibold text-forest disabled:opacity-40"><Check size={13} /> Alle gelesen</button>
             </div>
-            <div className="max-h-[min(65vh,420px)] overflow-y-auto">
+            <div className="overflow-y-auto" style={{ maxHeight: Math.min(420, window.innerHeight * 0.65, Math.max(0, noticePosition.maxHeight - 64)) }}>
               {noticeError && <p role="alert" className="px-4 py-3 text-xs text-[#b34335]">{noticeError}</p>}
               {!notifications.length && !noticeError && <p className="px-4 py-8 text-center text-xs text-muted">Du bist auf dem neuesten Stand.</p>}
               {notifications.map((item) => (
@@ -269,17 +350,15 @@ export function WorkspaceTools({
       <ThemeSelector role={role} />
 
       {searchOpen && (
-        <div className="absolute right-0 top-12 z-40 w-[min(92vw,540px)] overflow-hidden rounded-2xl border border-line bg-white shadow-float md:right-[180px]">
-          <div className="flex items-center gap-2 border-b border-line px-4 py-3 md:hidden">
-            <Search size={15} className="text-muted" />
-            <input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Roadmap, Dokumente, Chat …" style={{ backgroundColor: "transparent", color: "var(--color-text)" }} className="min-w-0 flex-1 text-sm outline-none" autoFocus />
-            <button type="button" onClick={() => setSearchOpen(false)} aria-label="Suche schließen"><X size={15} /></button>
-          </div>
+        searchPosition && <div
+          className="fixed z-40 overflow-hidden rounded-2xl border border-line bg-white shadow-float"
+          style={{ left: searchPosition.left, top: searchPosition.top, width: searchPosition.width, maxHeight: searchPosition.maxHeight }}
+        >
           {searchBusy && <div className="flex items-center gap-2 px-4 py-4 text-xs text-muted"><LoaderCircle size={14} className="animate-spin" />Suche läuft …</div>}
           {searchError && <p role="alert" className="px-4 py-4 text-xs text-[#b34335]">{searchError}</p>}
           {!searchBusy && !searchError && query.trim().length < 2 && <p className="px-4 py-5 text-xs text-muted">Gib mindestens zwei Zeichen ein, um Roadmap, Kommentare, Dokumente, Kalender und Teamchat zu durchsuchen.</p>}
           {!searchBusy && query.trim().length >= 2 && groups.length === 0 && !searchError && <p className="px-4 py-6 text-center text-xs text-muted">Keine passenden Inhalte gefunden.</p>}
-          <div className="max-h-[min(65vh,480px)] overflow-y-auto">
+          <div className="overflow-y-auto" style={{ maxHeight: Math.min(480, window.innerHeight * 0.65, Math.max(0, searchPosition.maxHeight - 12)) }}>
             {groups.map((group) => (
               <section key={group.category} className="border-b border-line/70 last:border-0">
                 <h3 className="px-4 pb-1 pt-3 text-[10px] font-bold uppercase tracking-wider text-muted">{group.category}</h3>
