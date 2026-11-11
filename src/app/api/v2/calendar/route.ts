@@ -62,6 +62,9 @@ export async function POST(request: Request) {
         details: input.details || null,
         created_by: session.userId ?? null,
         created_by_name: name,
+        updated_by: session.userId ?? null,
+        created_by_is_admin: session.role === "admin",
+        updated_by_is_admin: session.role === "admin",
       })
       .select("id, title, kind, starts_at, ends_at, location, details, created_by_name, created_at")
       .single();

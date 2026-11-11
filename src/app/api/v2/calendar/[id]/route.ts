@@ -40,6 +40,8 @@ export async function PATCH(
         ends_at: input.ends_at ? new Date(input.ends_at).toISOString() : null,
         location: input.location || null,
         details: input.details || null,
+        updated_by: session.userId ?? null,
+        updated_by_is_admin: true,
       })
       .eq("id", id)
       .select("id, title, kind, starts_at, ends_at, location, details, created_by_name, created_at")

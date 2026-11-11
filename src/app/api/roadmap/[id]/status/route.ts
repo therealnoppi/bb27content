@@ -31,7 +31,7 @@ export async function PATCH(
     const { error } = await supabase()
       .from("roadmap_status")
       .upsert(
-        { step_id: id, status: input.status, updated_at: new Date().toISOString() },
+        { step_id: id, status: input.status, updated_by: null, updated_by_is_admin: true, updated_at: new Date().toISOString() },
         { onConflict: "step_id" },
       );
     if (error) throw error;

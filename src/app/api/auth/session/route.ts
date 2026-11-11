@@ -14,7 +14,7 @@ export async function GET() {
       name = data?.name ?? null;
     }
     return NextResponse.json(
-      { authenticated: Boolean(session), role: session?.role ?? null, name },
+      { authenticated: Boolean(session), role: session?.role ?? null, name, userId: session?.role === "member" ? session.userId : null },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

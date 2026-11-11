@@ -63,6 +63,8 @@ export async function POST(
         filename: input.filename,
         storage_path: input.storage_path,
         updated_at: new Date().toISOString(),
+        updated_by: null,
+        updated_by_is_admin: true,
       })
       .eq("id", id)
       .eq("storage_path", document.storage_path)

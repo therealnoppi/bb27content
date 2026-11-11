@@ -41,7 +41,7 @@ export async function POST(request: Request) {
         ? await verifyV2Password(input.password, user.password_hash)
         : await hashV2Password(input.password).then(() => false);
       if (!user || !validPassword) return jsonError("Benutzername oder Passwort ist nicht korrekt.", 401);
-      const response = NextResponse.json({ authenticated: true, role: input.role, name: user.name });
+      const response = NextResponse.json({ authenticated: true, role: input.role, name: user.name, userId: user.id });
       response.cookies.set("northstar_session", createSessionToken("member", user.id), sessionCookieOptions());
       return response;
     }

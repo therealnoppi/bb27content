@@ -46,6 +46,8 @@ export async function POST(
         step_id: id,
         name: authorName,
         message: input.message,
+        actor_id: session.role === "member" ? session.userId : null,
+        actor_is_admin: session.role === "admin",
       })
       .select("id, step_id, name, message, created_at")
       .single();

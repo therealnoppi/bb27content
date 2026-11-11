@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   try {
     const { data, error } = await supabase()
       .from("documents")
-      .insert({ kind: "link", title: input.title, url: input.url })
+      .insert({ kind: "link", title: input.title, url: input.url, created_by: null, updated_by: null, created_by_is_admin: true, updated_by_is_admin: true })
       .select("id, kind, title, filename, url, created_at, updated_at")
       .single();
     if (error) throw error;
@@ -99,6 +99,10 @@ async function createPdf(input: z.infer<typeof pdfSchema>) {
         title: input.title,
         filename: input.filename,
         storage_path: input.storage_path,
+        created_by: null,
+        updated_by: null,
+        created_by_is_admin: true,
+        updated_by_is_admin: true,
       })
       .select("id, kind, title, filename, url, created_at, updated_at")
       .single();

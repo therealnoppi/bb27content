@@ -38,6 +38,8 @@ import {
   CalendarWorkspace,
   FileRequestPanel,
 } from "@/components/team-features";
+import { TeamChatWorkspace, ThemeSelector, WorkspaceTools } from "@/components/collaboration-workspace";
+import { VersionCenter } from "@/components/version-center";
 
 type Comment = {
   id: string;
@@ -47,7 +49,7 @@ type Comment = {
   created_at: string;
 };
 type Step = RoadmapStepConfig & { status: TrafficStatus; comments: Comment[] };
-type Tab = "roadmap" | "documents" | "calendar" | "access";
+type Tab = "roadmap" | "documents" | "calendar" | "access" | "teamchat" | "versions";
 type Role = "member" | "admin";
 type DocumentEntry = {
   id: string;
@@ -124,14 +126,23 @@ async function discardUploadedPdf(storagePath: string) {
 export function RoadmapApp() {
   const [role, setRole] = useState<Role | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
   const [documents, setDocuments] = useState<DocumentEntry[]>([]);
   const [selected, setSelected] = useState<Step | null>(null);
   const [tab, setTab] = useState<Tab>("roadmap");
+  const [chatTargetId, setChatTargetId] = useState<string | undefined>();
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [activityRefresh, setActivityRefresh] = useState(0);
   const refreshActivity = useCallback(() => setActivityRefresh((current) => current + 1), []);
+  const navigateToSection = useCallback((section: Tab, target?: string) => {
+    setTab(section);
+    setChatTargetId(section === "teamchat" ? target : undefined);
+    if (section === "roadmap" && target) {
+      setSelected(steps.find((step) => step.id === target) ?? null);
+    }
+  }, [steps]);
 
   const loadRoadmap = useCallback(async () => {
     try {
@@ -160,10 +171,15 @@ export function RoadmapApp() {
   useEffect(() => {
     fetch("/api/auth/session", { cache: "no-store" })
       .then(async (response) => response.json())
-      .then(async (session: { authenticated: boolean; role: Role | null; name?: string | null }) => {
+      .then(async (session: { authenticated: boolean; role: Role | null; name?: string | null; userId?: string | null }) => {
         if (session.authenticated && session.role) {
           setRole(session.role);
           setDisplayName(session.name ?? null);
+          setUserId(session.userId ?? null);
+          const section = new URLSearchParams(window.location.search).get("section");
+          if (section === "documents" || section === "calendar" || section === "teamchat" || section === "versions" || (section === "access" && session.role === "admin")) {
+            setTab(section);
+          }
           await Promise.all([loadRoadmap(), loadDocuments()]);
         }
       })
@@ -213,9 +229,14 @@ export function RoadmapApp() {
       body: JSON.stringify({ password, role: loginRole, ...(username ? { username } : {}) }),
     });
     if (!response.ok) throw new Error(await responseError(response));
-    const data = (await response.json()) as { role: Role; name?: string };
+    const data = (await response.json()) as { role: Role; name?: string; userId?: string };
     setRole(data.role);
     setDisplayName(data.name ?? null);
+    setUserId(data.userId ?? null);
+    const section = new URLSearchParams(window.location.search).get("section");
+    if (section === "documents" || section === "calendar" || section === "teamchat" || section === "versions" || (section === "access" && data.role === "admin")) {
+      setTab(section);
+    }
     setError("");
     await Promise.all([loadRoadmap(), loadDocuments()]);
   }
@@ -228,6 +249,7 @@ export function RoadmapApp() {
       const data = (await response.json()) as { authenticated: boolean };
       setRole(null);
       setDisplayName(null);
+      setUserId(null);
       setSelected(null);
       setSteps([]);
       setDocuments([]);
@@ -275,13 +297,6 @@ export function RoadmapApp() {
   }
 
   const cssVars = {
-    "--color-primary": siteConfig.colors.primary,
-    "--color-secondary": siteConfig.colors.secondary,
-    "--color-background": siteConfig.colors.background,
-    "--color-text": siteConfig.colors.text,
-    "--color-muted": siteConfig.colors.muted,
-    "--color-accent": siteConfig.colors.accent,
-    "--color-line": siteConfig.colors.line,
     "--status-green": siteConfig.colors.traffic.green,
     "--status-yellow": siteConfig.colors.traffic.yellow,
     "--status-red": siteConfig.colors.traffic.red,
@@ -301,7 +316,7 @@ export function RoadmapApp() {
   return (
     <main className="min-h-screen pb-16" style={cssVars}>
       <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
-        <header className="flex items-center justify-between border-b border-line/80 py-5">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line/80 py-5">
           <a href="#" className="flex items-center gap-3" aria-label={`${siteConfig.name} Startseite`}>
             <Image className="h-10 w-10" src={siteConfig.logo} alt="" width={40} height={40} unoptimized />
             <span className="text-sm font-bold tracking-[0.16em] text-ink">
@@ -312,6 +327,7 @@ export function RoadmapApp() {
             </span>
           </a>
           <div className="flex items-center gap-3">
+            <WorkspaceTools role={role} onNavigate={navigateToSection} />
             {role === "admin" ? (
               <span className="hidden items-center gap-1.5 rounded-full bg-[#e8f4eb] px-3 py-1.5 text-xs font-semibold text-forest sm:inline-flex">
                 <ShieldCheck size={14} /> Admin-Modus
@@ -430,14 +446,18 @@ export function RoadmapApp() {
         </section>
 
         <nav className="mt-10 flex gap-2 border-b border-line" aria-label="Projektbereiche">
-          <TabButton active={tab === "roadmap"} onClick={() => setTab("roadmap")}>Roadmap</TabButton>
-          <TabButton active={tab === "documents"} onClick={() => setTab("documents")}>Dokumentenablage</TabButton>
-          <TabButton active={tab === "calendar"} onClick={() => setTab("calendar")}>Kalender</TabButton>
-          {role === "admin" && <TabButton active={tab === "access"} onClick={() => setTab("access")}>Zugänge</TabButton>}
+          <TabButton active={tab === "roadmap"} onClick={() => navigateToSection("roadmap")}>Roadmap</TabButton>
+          <TabButton active={tab === "documents"} onClick={() => navigateToSection("documents")}>Dokumentenablage</TabButton>
+          <TabButton active={tab === "calendar"} onClick={() => navigateToSection("calendar")}>Kalender</TabButton>
+          <TabButton active={tab === "teamchat"} onClick={() => navigateToSection("teamchat")}>Teamchat</TabButton>
+          <TabButton active={tab === "versions"} onClick={() => navigateToSection("versions")}>{role === "admin" ? "Versionsverwaltung" : "Versionshistorie"}</TabButton>
+          {role === "admin" && <TabButton active={tab === "access"} onClick={() => navigateToSection("access")}>Zugänge</TabButton>}
           <span className="ml-auto hidden self-center text-xs text-muted sm:block">
-            {tab === "roadmap" ? "Gemeinsam im Blick, was als Nächstes kommt" : tab === "documents" ? "PDFs und wichtige Links an einem Ort" : tab === "calendar" ? "Termine und Verfügbarkeiten abstimmen" : "Persönliche Teamzugänge verwalten"}
+            {tab === "roadmap" ? "Gemeinsam im Blick, was als Nächstes kommt" : tab === "documents" ? "PDFs und wichtige Links an einem Ort" : tab === "calendar" ? "Termine und Verfügbarkeiten abstimmen" : tab === "teamchat" ? "Im Team austauschen und auf Nachrichten antworten" : tab === "versions" ? role === "admin" ? "Änderungen für das Team veröffentlichen" : "Veröffentlichte Updates jederzeit nachlesen" : "Persönliche Teamzugänge verwalten"}
           </span>
         </nav>
+
+        <VersionCenter role={role} active={tab === "versions"} />
 
         {tab === "roadmap" ? (
           <section className="grid gap-8 pt-8 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -510,6 +530,10 @@ export function RoadmapApp() {
           />
         ) : tab === "calendar" ? (
           <CalendarWorkspace role={role} onChange={refreshActivity} onError={setError} onMessage={setFeedback} />
+        ) : tab === "teamchat" ? (
+          <TeamChatWorkspace userId={userId} role={role} targetId={chatTargetId} />
+        ) : tab === "versions" ? (
+          null
         ) : (
           <AccessManagement onChange={refreshActivity} onError={setError} onMessage={setFeedback} />
         )}
@@ -569,6 +593,7 @@ function UnlockScreen({
 
   return (
     <main className="grid min-h-screen place-items-center px-5 py-10" style={style}>
+      <div className="fixed right-5 top-5 z-20"><ThemeSelector role={null} /></div>
       <div className="grid w-full max-w-[1000px] overflow-hidden rounded-[30px] border border-line bg-white shadow-float md:grid-cols-[1.05fr_0.95fr]">
         <section className="relative hidden min-h-[620px] overflow-hidden bg-[#322014] p-11 text-white md:flex md:flex-col md:justify-between">
           <Image

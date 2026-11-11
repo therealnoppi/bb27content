@@ -46,7 +46,7 @@ npm ci
 Copy-Item .env.example .env.local
 ```
 
-Trage die benötigten Werte in `.env.local` ein und führe die Datenbankmigration in Supabase aus. Danach startest du den Entwicklungsserver:
+Trage die benötigten Werte in `.env.local` ein und führe die noch nicht ausgeführten Datenbankmigrationen in Supabase manuell aus (siehe unten). Danach startest du den Entwicklungsserver:
 
 ```bash
 npm run dev
@@ -64,8 +64,8 @@ npm run build
 
 1. Erstelle ein Supabase-Projekt.
 2. Öffne **Project Settings → API** und kopiere die Projekt-URL sowie den `service_role`-Schlüssel.
-3. Öffne den **SQL Editor** und führe die Migrationen in dieser Reihenfolge aus: [`20261109000000_create_roadmap_tables.sql`](./supabase/migrations/20261109000000_create_roadmap_tables.sql), [`20261110000000_create_document_library.sql`](./supabase/migrations/20261110000000_create_document_library.sql), [`20261110010000_create_version_two.sql`](./supabase/migrations/20261110010000_create_version_two.sql), [`20261110020000_log_existing_project_changes.sql`](./supabase/migrations/20261110020000_log_existing_project_changes.sql), [`20261110030000_allow_reusing_revoked_usernames.sql`](./supabase/migrations/20261110030000_allow_reusing_revoked_usernames.sql) und [`20261110040000_track_calendar_event_edits.sql`](./supabase/migrations/20261110040000_track_calendar_event_edits.sql).
-4. Die Migrationen erstellen Status-, Kommentar-, Dokumenten-, Teamzugangs-, Kalender- und Dateianfragetabellen, aktivieren Row Level Security und verweigern direkten Tabellenzugriff für `anon` und `authenticated`. PDF-Dateianfragen liegen in einem privaten Storage-Bucket und werden erst nach Adminfreigabe für das Team sichtbar. Der Server nutzt den Service-Role-Key ausschließlich in geschützten API-Anfragen.
+3. Öffne den **SQL Editor** und führe nicht bereits angewendete Migrationen in dieser Reihenfolge aus: [`20261109000000_create_roadmap_tables.sql`](./supabase/migrations/20261109000000_create_roadmap_tables.sql), [`20261110000000_create_document_library.sql`](./supabase/migrations/20261110000000_create_document_library.sql), [`20261110010000_create_version_two.sql`](./supabase/migrations/20261110010000_create_version_two.sql), [`20261110020000_log_existing_project_changes.sql`](./supabase/migrations/20261110020000_log_existing_project_changes.sql), [`20261110030000_allow_reusing_revoked_usernames.sql`](./supabase/migrations/20261110030000_allow_reusing_revoked_usernames.sql), [`20261110040000_track_calendar_event_edits.sql`](./supabase/migrations/20261110040000_track_calendar_event_edits.sql), [`20261111000000_collaboration_features.sql`](./supabase/migrations/20261111000000_collaboration_features.sql), [`20261112000000_version_announcements.sql`](./supabase/migrations/20261112000000_version_announcements.sql) und [`20261112010000_fix_version_release_change_ordinality.sql`](./supabase/migrations/20261112010000_fix_version_release_change_ordinality.sql).
+4. Die Migrationen erstellen bzw. erweitern Status-, Kommentar-, Dokumenten-, Teamzugangs-, Kalender- und Dateianfragetabellen, aktivieren Row Level Security und verweigern direkten Tabellenzugriff für `anon` und `authenticated`. Die siebte Migration ergänzt den Teamchat, private Benachrichtigungen, Lesestände und die Benutzereinstellung für das Theme; Realtime wird für Chat und Benachrichtigungen aktiviert. Die achte Migration erstellt persistente Versionshinweise, kategorisierte Änderungen und benutzerbezogene Gelesen-Markierungen; neue Veröffentlichungen werden ebenfalls über Realtime signalisiert. Die neunte Migration korrigiert die Spaltenreferenz auf die Änderungsreihenfolge in den Version-Speicherfunktionen. PDF-Dateianfragen liegen in privaten Storage-Buckets und werden erst nach Adminfreigabe für das Team sichtbar. Der Server nutzt den Service-Role-Key ausschließlich in geschützten API-Anfragen.
 
 Der Service-Role-Key darf weder im Browsercode verwendet noch in das Repository eingecheckt werden.
 
@@ -107,7 +107,7 @@ Administratoren können in der Dokumentenablage PDFs bis 25 MB hinzufügen, vorh
 
 ## 9. Teamzugänge, Kalender und Dateifreigabe
 
-Alle Funktionen befinden sich in der bestehenden Oberfläche unter `/`; Roadmap, Kommentare und Dokumentenablage bleiben erhalten.
+Alle Funktionen befinden sich in der bestehenden Oberfläche unter `/`; Roadmap, Kommentare und Dokumentenablage bleiben erhalten. Die Navigation enthält zusätzlich Teamchat, Suche, Benachrichtigungen, den Darstellungsumschalter sowie die Versionsverwaltung bzw. Versionshistorie.
 
 - Teammitglieder melden sich über **Teamzugang** mit individuellem Benutzernamen und Passwort an. Im Tab **Zugänge** können Administratoren Konten erstellen und entziehen. Passwörter werden mit scrypt gehasht.
 - Ein entzogenes Konto wird deaktiviert. Bereits ausgestellte Sitzungen werden bei jeder API-Anfrage erneut gegen den aktiven Kontostatus geprüft; der Zugriff endet unmittelbar. Kommentare, Kalendertermine und Dateianfragen bleiben bestehen.
@@ -117,20 +117,22 @@ Alle Funktionen befinden sich in der bestehenden Oberfläche unter `/`; Roadmap,
 - Die Box **Letzte Änderungen** zeigt Kalender-, Datei-, Kommentar-, Status- und Dokumentenänderungen. Private Uploads und Zugangsänderungen sind nur für Administratoren sichtbar.
 - Der gemeinsame Besucherzugang wurde entfernt. Interessierte sehen auf der Anmeldeseite den Hinweis, sich für einen persönlichen Zugang an die Projektleitung zu wenden. Alte Besucher-Sitzungscookies werden nicht mehr akzeptiert.
 
-Falls die ersten fünf Migrationen bereits ausgeführt wurden, führe nur die neue sechste Migration aus. Andernfalls führe alle sechs in der oben genannten Reihenfolge aus. Melde dich anschließend mit dem bestehenden `ADMIN_PASSWORD` an, öffne **Zugänge** und lege die Teamkonten an. Teile Passwörter über einen sicheren Kanal mit. Nach dem Entzug eines Zugangs kann derselbe Benutzername für einen neuen Zugang wiederverwendet werden.
+Falls die ersten sechs Migrationen bereits ausgeführt wurden, führe zuerst **einmalig** [`20261111000000_collaboration_features.sql`](./supabase/migrations/20261111000000_collaboration_features.sql) und danach [`20261112000000_version_announcements.sql`](./supabase/migrations/20261112000000_version_announcements.sql) sowie [`20261112010000_fix_version_release_change_ordinality.sql`](./supabase/migrations/20261112010000_fix_version_release_change_ordinality.sql) manuell im Supabase SQL Editor aus. Falls die achte Migration bereits angewendet wurde, führe nur die neue neunte Korrekturmigration aus. Bereits angewendete Migrationen nicht erneut ausführen oder verändern. Andernfalls führe alle noch ausstehenden Migrationen in der oben genannten Reihenfolge aus. Keine Migration wird automatisch aus der Anwendung ausgeführt. Melde dich anschließend mit dem bestehenden `ADMIN_PASSWORD` an, öffne **Zugänge** und lege die Teamkonten an. Teile Passwörter über einen sicheren Kanal mit. Nach dem Entzug eines Zugangs kann derselbe Benutzername für einen neuen Zugang wiederverwendet werden.
+
+Mitglieder erhalten persönliche Benachrichtigungen zu Chat-Nachrichten und Antworten, Kommentaren, Kalender- und Dokumentenänderungen, Datei-Freigaben und Roadmap-Statusänderungen. Eigene Aktionen werden für das betreffende Mitglied ausgelassen. Da der vorhandene Admin-Zugang ein gemeinsam genutztes Konto ohne Benutzer-ID ist, verwendet er einen gemeinsamen Admin-Benachrichtigungseingang; eigene Admin-Aktionen werden dort ausgelassen. Versionshinweise lassen sich im Admin-Bereich ohne Codeänderung oder erneutes Deployment erstellen und ausdrücklich veröffentlichen. Veröffentlichung und Archivierung werden in Supabase gespeichert; bereits veröffentlichte Hinweise bleiben in der Versionshistorie. Die Gelesen-Markierung gilt pro Teamkonto, für den gemeinsam genutzten Admin-Zugang gibt es einen gemeinsamen Lesestatus. Versionsdaten und Lesestatus sind über RLS gegen direkten Tabellenzugriff geschützt und werden ausschließlich über authentifizierte Server-Routen verwaltet. Benachrichtigungen und Chat sind ebenfalls über RLS geschützt. Die Theme-Auswahl wird für Teamkonten in `v2_users` gespeichert; beim gemeinsam genutzten Admin-Zugang wird sie lokal im Browser gespeichert.
 
 ## 10. Deployment mit Vercel
 
 1. Lade das Projekt in ein privates oder öffentliches Git-Repository.
 2. Importiere das Repository in Vercel und wähle Next.js als Framework.
 3. Hinterlege die vier Umgebungsvariablen in den Vercel-Projekteinstellungen für die gewünschten Umgebungen.
-4. Führe alle sechs Supabase-Migrationen vor dem Deployment aus.
+4. Führe alle neun Supabase-Migrationen (bzw. nur die noch nicht angewendeten) vor dem Deployment manuell aus.
 5. Wähle **Node.js 22.x** als Runtime, falls Vercel nach der Node-Version fragt, und deploye. Ein zusätzlicher API-Server ist nicht erforderlich.
 
 ## 11. Was du für den Livebetrieb brauchst
 
 - Die GitHub-Repository-URL und einen erfolgreichen CI-Lauf.
-- Ein eingerichtetes Supabase-Projekt mit allen sechs ausgeführten Migrationen.
+- Ein eingerichtetes Supabase-Projekt mit allen neun ausgeführten Migrationen.
 - Die vier echten Umgebungsvariablen in den Vercel-Projekteinstellungen sowie persönliche Teamkonten. Verwende einen individuellen `SESSION_SECRET`.
 - Einen Vercel-Deployment-Status **Ready**. Teste danach Team- und Admin-Login, einen Kommentar, eine Statusänderung, einen Kalendertermin sowie eine Datei-Einreichung und -Freigabe.
 
