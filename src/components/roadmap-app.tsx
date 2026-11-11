@@ -1171,7 +1171,7 @@ function StepDialog({
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     placeholder="Wie dürfen wir dich nennen?"
-                    className="w-full rounded-lg border border-line px-3.5 py-3 text-sm text-ink placeholder:text-[#a0a9a2]"
+                    className="w-full rounded-lg border border-line bg-white px-3.5 py-3 text-sm text-ink placeholder:text-[#a0a9a2]"
                   />
                 </>
               )}
@@ -1184,7 +1184,7 @@ function StepDialog({
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
                 placeholder="Teile einen Gedanken, eine Frage oder Feedback …"
-                className="w-full resize-y rounded-lg border border-line px-3.5 py-3 text-sm leading-6 text-ink placeholder:text-[#a0a9a2]"
+                className="w-full resize-y rounded-lg border border-line bg-white px-3.5 py-3 text-sm leading-6 text-ink placeholder:text-[#a0a9a2]"
               />
               <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                 <span className="text-[10px] text-muted">{message.length}/1000</span>
@@ -1217,7 +1217,7 @@ function StepDialog({
                       <button onClick={() => removeComment(comment.id)} className="rounded-lg px-2 py-1 text-[10px] font-semibold text-[#a75c53] hover:bg-[#fff0ed]" aria-label={`Kommentar von ${comment.name} löschen`}>Löschen</button>
                     )}
                   </div>
-                  <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-[#52615a]">{comment.message}</p>
+                  <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-ink">{comment.message}</p>
                 </article>
               )) : (
                 <div className="rounded-2xl border border-dashed border-[#d9e1d9] bg-[#f6f8f4] px-5 py-7 text-center">
