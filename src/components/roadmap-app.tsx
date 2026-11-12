@@ -6,10 +6,13 @@ import {
   ChevronRight,
   Compass,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   Flag,
   Layers3,
   Link as LinkIcon,
+  LoaderCircle,
   LockKeyhole,
   LogOut,
   MessageCircle,
@@ -575,6 +578,7 @@ function UnlockScreen({
   style: React.CSSProperties;
 }) {
   const [password, setPassword] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [username, setUsername] = useState("");
   const [mode, setMode] = useState<Role>("member");
   const [busy, setBusy] = useState(false);
@@ -630,17 +634,26 @@ function UnlockScreen({
           <p className="mb-5 rounded-xl bg-[#f7f5f1] px-4 py-3 text-xs leading-5 text-muted">
             Der Besucherzugang wurde auf persönliche Teamkonten umgestellt. Wenn du mitarbeiten möchtest, wende dich bitte an die Projektleitung, um einen Zugang zu erhalten.
           </p>
-          <div className="mb-5 grid grid-cols-2 rounded-full bg-[#f1f3f0] p-1" role="tablist" aria-label="Zugangsart">
-            <button onClick={() => { setMode("member"); setError(""); }} className={`rounded-full py-2.5 text-xs font-semibold transition ${mode === "member" ? "bg-white text-ink shadow-sm" : "text-muted"}`} role="tab" aria-selected={mode === "member"}>Teamzugang</button>
-            <button onClick={() => { setMode("admin"); setError(""); }} className={`rounded-full py-2.5 text-xs font-semibold transition ${mode === "admin" ? "bg-white text-ink shadow-sm" : "text-muted"}`} role="tab" aria-selected={mode === "admin"}>Adminzugang</button>
+          <div className="relative mb-5 rounded-full bg-[#f1f3f0] p-1" role="tablist" aria-label="Zugangsart">
+            <div aria-hidden="true" className="pointer-events-none absolute inset-x-1 inset-y-1">
+              <span className={`absolute inset-y-0 left-0 w-1/2 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${mode === "admin" ? "translate-x-full" : ""}`} />
+            </div>
+            <div className="relative grid grid-cols-2">
+              <button onClick={() => { setMode("member"); setError(""); }} className={`rounded-full py-2.5 text-xs font-semibold transition-colors ${mode === "member" ? "text-ink" : "text-muted"}`} role="tab" aria-selected={mode === "member"}>Teamzugang</button>
+              <button onClick={() => { setMode("admin"); setError(""); }} className={`rounded-full py-2.5 text-xs font-semibold transition-colors ${mode === "admin" ? "text-ink" : "text-muted"}`} role="tab" aria-selected={mode === "admin"}>Adminzugang</button>
+            </div>
           </div>
-          <form onSubmit={submit}>
-            {mode === "member" && (
-              <>
+          <form onSubmit={submit} aria-busy={busy}>
+            <div
+              aria-hidden={mode !== "member"}
+              className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out ${mode === "member" ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+            >
+              <div className="min-h-0 overflow-hidden">
                 <label htmlFor="username" className="mb-2 block text-xs font-semibold text-ink">Benutzername</label>
                 <input
                   id="username"
-                  required
+                  required={mode === "member"}
+                  disabled={mode !== "member"}
                   autoComplete="username"
                   minLength={3}
                   maxLength={32}
@@ -648,24 +661,37 @@ function UnlockScreen({
                   onChange={(event) => setUsername(event.target.value)}
                   className="mb-4 w-full rounded-xl border border-line bg-white px-4 py-3.5 text-sm text-ink"
                 />
-              </>
-            )}
+              </div>
+            </div>
             <label htmlFor="password" className="mb-2 block text-xs font-semibold text-ink">
               {mode === "admin" ? "Administratorpasswort" : "Persönliches Passwort"}
             </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              maxLength={256}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Passwort eingeben"
-              className="w-full rounded-xl border border-line bg-white px-4 py-3.5 text-sm text-ink placeholder:text-[#a0a9a2]"
-            />
+            <div className="relative">
+              <input
+                id="password"
+                type={passwordVisible ? "text" : "password"}
+                autoComplete="current-password"
+                required
+                maxLength={256}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Passwort eingeben"
+                className="w-full rounded-xl border border-line bg-white px-4 py-3.5 pr-12 text-sm text-ink placeholder:text-[#a0a9a2]"
+              />
+              <button
+                type="button"
+                onClick={() => setPasswordVisible((visible) => !visible)}
+                disabled={busy}
+                aria-label={passwordVisible ? "Passwort verbergen" : "Passwort anzeigen"}
+                aria-pressed={passwordVisible}
+                className="absolute inset-y-0 right-1.5 my-auto grid h-10 w-10 place-items-center rounded-lg text-muted transition-colors hover:bg-canvas hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-forest disabled:cursor-wait disabled:opacity-50"
+              >
+                {passwordVisible ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </div>
             {error && <p role="alert" className="mt-3 rounded-xl bg-[#fff0ed] px-3.5 py-3 text-xs leading-5 text-[#aa463c]">{error}</p>}
             <button disabled={busy} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-forest px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-[#174c3e] disabled:cursor-wait disabled:opacity-70">
+              {busy && <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />}
               {busy ? "Zugang wird geprüft…" : mode === "admin" ? "Als Administrator anmelden" : "Als Teammitglied anmelden"}
               {!busy && <ArrowRight size={16} />}
             </button>
