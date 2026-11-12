@@ -461,86 +461,89 @@ export function RoadmapApp() {
           </span>
         </nav>
 
-        <VersionCenter role={role} active={tab === "versions"} />
+        <div key={tab} className="workspace-transition">
+          <VersionCenter role={role} active={tab === "versions"} />
 
-        {tab === "roadmap" ? (
-          <section className="grid gap-8 pt-8 lg:grid-cols-[minmax(0,1fr)_300px]">
-            <div>
-              <div className="mb-7 flex items-end justify-between">
-                <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-forest">Produktionsplan</p>
-                  <h2 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-ink">Fünf Phasen. Ein stimmiger Auftritt.</h2>
+          {tab === "roadmap" ? (
+            <section className="grid gap-8 pt-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+              <div>
+                <div className="mb-7 flex items-end justify-between">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-forest">Produktionsplan</p>
+                    <h2 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-ink">Fünf Phasen. Ein stimmiger Auftritt.</h2>
+                  </div>
+                  <span className="hidden text-xs text-muted sm:block">Phase auswählen und Details ansehen</span>
                 </div>
-                <span className="hidden text-xs text-muted sm:block">Phase auswählen und Details ansehen</span>
-              </div>
-              <div className="relative space-y-4 pl-9 sm:pl-12">
-                <div className="roadmap-line absolute bottom-7 left-[11px] top-8 w-px sm:left-[15px]" />
-                {steps.map((step, index) => {
-                  const Icon = iconMap[step.icon];
-                  const isPast = monthStart(step) < new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
-                  return (
-                    <div className="relative" key={step.id}>
-                      <span className={`absolute -left-[36px] top-7 grid h-[24px] w-[24px] place-items-center rounded-full border-[5px] border-canvas bg-white shadow-sm sm:-left-[44px] sm:h-[30px] sm:w-[30px]`}>
-                        <span className={`h-2.5 w-2.5 rounded-full status-${step.status}`} />
-                      </span>
-                      <button
-                        onClick={() => setSelected(step)}
-                        className="group w-full rounded-[22px] border border-line bg-white p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[#cbd9ce] hover:shadow-card sm:p-6"
-                      >
-                        <div className="flex items-start gap-4">
-                          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#eff5ef] text-forest transition group-hover:bg-lime">
-                            <Icon size={20} strokeWidth={1.8} />
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
-                                Phase {String(index + 1).padStart(2, "0")}
-                              </span>
-                              {isPast && <span className="rounded-full bg-[#eef4ed] px-2 py-0.5 text-[10px] font-semibold text-forest">Vergangen</span>}
-                              <span className="ml-auto flex items-center gap-2 text-xs font-semibold text-ink">
-                                <span className={`h-2 w-2 rounded-full status-${step.status}`} />
-                                <span className="hidden sm:inline">{statusLabels[step.status]}</span>
-                              </span>
-                            </div>
-                            <div className="mt-2 flex items-center justify-between gap-3">
-                              <h3 className="text-base font-semibold tracking-tight text-ink sm:text-lg">{step.title}</h3>
-                              <ChevronRight className="shrink-0 text-muted transition group-hover:translate-x-1 group-hover:text-forest" size={18} />
-                            </div>
-                            <p className="mt-2 line-clamp-2 max-w-[650px] text-sm leading-6 text-muted">{step.description}</p>
-                            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
-                              <span className="flex items-center gap-1.5"><CalendarDays size={14} />{monthLabel(step.month, step.year)}</span>
-                              <span className="flex items-center gap-1.5"><MessageCircle size={14} />{step.comments.length} {step.comments.length === 1 ? "Kommentar" : "Kommentare"}</span>
+                <div className="relative space-y-4 pl-9 sm:pl-12">
+                  <div className="roadmap-line absolute bottom-7 left-[11px] top-8 w-px sm:left-[15px]" />
+                  {steps.map((step, index) => {
+                    const Icon = iconMap[step.icon];
+                    const isPast = monthStart(step) < new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+                    return (
+                      <div className="relative" key={step.id}>
+                        <span className={`absolute -left-[36px] top-7 grid h-[24px] w-[24px] place-items-center rounded-full border-[5px] border-canvas bg-white shadow-sm sm:-left-[44px] sm:h-[30px] sm:w-[30px]`}>
+                          <span className={`h-2.5 w-2.5 rounded-full status-${step.status}`} />
+                        </span>
+                        <button
+                          onClick={() => setSelected(step)}
+                          style={{ animationDelay: `${Math.min(index, 6) * 55}ms` }}
+                          className="roadmap-card group w-full rounded-[22px] border border-line bg-white p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[#cbd9ce] hover:shadow-card active:translate-y-0 sm:p-6"
+                        >
+                          <div className="flex items-start gap-4">
+                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#eff5ef] text-forest transition group-hover:bg-lime">
+                              <Icon size={20} strokeWidth={1.8} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
+                                  Phase {String(index + 1).padStart(2, "0")}
+                                </span>
+                                {isPast && <span className="rounded-full bg-[#eef4ed] px-2 py-0.5 text-[10px] font-semibold text-forest">Vergangen</span>}
+                                <span className="ml-auto flex items-center gap-2 text-xs font-semibold text-ink">
+                                  <span className={`h-2 w-2 rounded-full status-${step.status}`} />
+                                  <span className="hidden sm:inline">{statusLabels[step.status]}</span>
+                                </span>
+                              </div>
+                              <div className="mt-2 flex items-center justify-between gap-3">
+                                <h3 className="text-base font-semibold tracking-tight text-ink sm:text-lg">{step.title}</h3>
+                                <ChevronRight className="shrink-0 text-muted transition group-hover:translate-x-1 group-hover:text-forest" size={18} />
+                              </div>
+                              <p className="mt-2 line-clamp-2 max-w-[650px] text-sm leading-6 text-muted">{step.description}</p>
+                              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
+                                <span className="flex items-center gap-1.5"><CalendarDays size={14} />{monthLabel(step.month, step.year)}</span>
+                                <span className="flex items-center gap-1.5"><MessageCircle size={14} />{step.comments.length} {step.comments.length === 1 ? "Kommentar" : "Kommentare"}</span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </button>
-                    </div>
-                  );
-                })}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          </section>
-        ) : tab === "documents" ? (
-          <DocumentLibrary
-            documents={documents}
-            role={role}
-            onRefresh={async () => {
-              await loadDocuments();
-              refreshActivity();
-            }}
-            setError={setError}
-            setMessage={setFeedback}
-            onChange={refreshActivity}
-          />
-        ) : tab === "calendar" ? (
-          <CalendarWorkspace role={role} onChange={refreshActivity} onError={setError} onMessage={setFeedback} />
-        ) : tab === "teamchat" ? (
-          <TeamChatWorkspace userId={userId} role={role} targetId={chatTargetId} />
-        ) : tab === "versions" ? (
-          null
-        ) : (
-          <AccessManagement onChange={refreshActivity} onError={setError} onMessage={setFeedback} />
-        )}
+            </section>
+          ) : tab === "documents" ? (
+            <DocumentLibrary
+              documents={documents}
+              role={role}
+              onRefresh={async () => {
+                await loadDocuments();
+                refreshActivity();
+              }}
+              setError={setError}
+              setMessage={setFeedback}
+              onChange={refreshActivity}
+            />
+          ) : tab === "calendar" ? (
+            <CalendarWorkspace role={role} onChange={refreshActivity} onError={setError} onMessage={setFeedback} />
+          ) : tab === "teamchat" ? (
+            <TeamChatWorkspace userId={userId} role={role} targetId={chatTargetId} />
+          ) : tab === "versions" ? (
+            null
+          ) : (
+            <AccessManagement onChange={refreshActivity} onError={setError} onMessage={setFeedback} />
+          )}
+        </div>
 
         {feedback && <div role="status" className="mt-5 rounded-xl border border-[#d6e8d8] bg-[#f0f7f1] px-4 py-3 text-sm text-[#2c6948]">{feedback}</div>}
         <ActivityFeed role={role} refreshKey={activityRefresh} onError={setError} />
