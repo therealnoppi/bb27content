@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownToLine, CalendarDays, Check, Clock3, FilePlus2, Pencil, Plus, Save, Trash2, Users, X } from "lucide-react";
+import { ArrowDownToLine, CalendarDays, Check, Clock3, FilePlus2, Link as LinkIcon, Pencil, Plus, Save, Trash2, Users, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 type Role = "member" | "admin";
@@ -16,8 +16,10 @@ type CalendarEvent = {
 };
 type FileRequest = {
   id: string;
+  kind: "pdf" | "link";
   title: string;
-  filename: string;
+  filename: string | null;
+  url: string | null;
   status: "pending" | "approved" | "rejected";
   submitted_by_name: string;
   created_at: string;
@@ -274,7 +276,7 @@ export function FileRequestPanel({
       await requestJson("/api/v2/files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: form.get("title"), filename: signed.filename, storage_path: storagePath }),
+        body: JSON.stringify({ kind: "pdf", title: form.get("title"), filename: signed.filename, storage_path: storagePath }),
       });
       formElement.reset();
       onMessage("Die PDF wurde privat eingereicht und wartet auf die Freigabe.");
@@ -298,7 +300,34 @@ export function FileRequestPanel({
     }
   }
 
-  async function reviewFile(id: string, status: "approved" | "rejected") {
+  async function submitLink(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    setBusy(true);
+    onError("");
+    try {
+      await requestJson("/api/v2/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "link",
+          title: form.get("title"),
+          url: form.get("url"),
+        }),
+      });
+      formElement.reset();
+      onMessage("Der Link wurde eingereicht und wartet auf die Freigabe.");
+      await load();
+      onChange();
+    } catch (cause) {
+      onError(cause instanceof Error ? cause.message : "Der Link konnte nicht eingereicht werden.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reviewFile(id: string, kind: FileRequest["kind"], status: "approved" | "rejected") {
     setBusy(true);
     onError("");
     try {
@@ -307,7 +336,8 @@ export function FileRequestPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
-      onMessage(status === "approved" ? "Die Datei wurde freigegeben." : "Die Datei wurde abgelehnt.");
+      const itemName = kind === "link" ? "Der Link" : "Die Datei";
+      onMessage(`${itemName} wurde ${status === "approved" ? "freigegeben" : "abgelehnt"}.`);
       await load();
       onChange();
     } catch (cause) {
@@ -322,19 +352,33 @@ export function FileRequestPanel({
 
   return (
     <section className="mt-8 border-t border-line pt-7">
-      <div className="flex items-center gap-3"><FilePlus2 className="text-forest" /><div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted">Prüfung und Freigabe</p><h2 className="text-xl font-semibold text-ink">Dateianfragen</h2></div></div>
-      <p className="mt-2 text-sm leading-6 text-muted">Eingereichte PDFs bleiben privat, bis ein Administrator sie freigibt. Erlaubt sind PDF-Dateien bis 25 MB.</p>
-      {role === "member" && <form onSubmit={submit} className="mt-4 grid gap-3 rounded-2xl border border-line bg-[#fcfbf9] p-4 md:grid-cols-[1fr_1.2fr_auto] md:items-end">
-        <label className="text-xs font-semibold text-ink">Titel<input name="title" required maxLength={120} className="mt-2 w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm" /></label>
-        <label className="text-xs font-semibold text-ink">PDF-Datei<input name="file" type="file" accept="application/pdf,.pdf" required className="mt-2 block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-[#efe2d3] file:px-3 file:py-2 file:font-semibold file:text-forest" /></label>
-        <button disabled={busy} className="rounded-xl bg-forest px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">Einreichen</button>
-      </form>}
+      <div className="flex items-center gap-3"><FilePlus2 className="text-forest" /><div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted">Prüfung und Freigabe</p><h2 className="text-xl font-semibold text-ink">Datei- und Linkanfragen</h2></div></div>
+      <p className="mt-2 text-sm leading-6 text-muted">Eingereichte PDFs und Links warten auf die Freigabe durch einen Administrator. PDFs dürfen bis zu 25 MB groß sein; Links müssen HTTPS verwenden.</p>
+      {role === "member" && <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <form onSubmit={submit} className="grid gap-3 rounded-2xl border border-line bg-[#fcfbf9] p-4 md:grid-cols-[1fr_1.2fr_auto] md:items-end">
+          <label className="text-xs font-semibold text-ink">PDF-Titel<input name="title" required maxLength={120} className="mt-2 w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm" /></label>
+          <label className="text-xs font-semibold text-ink">PDF-Datei<input name="file" type="file" accept="application/pdf,.pdf" required className="mt-2 block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-[#efe2d3] file:px-3 file:py-2 file:font-semibold file:text-forest" /></label>
+          <button disabled={busy} className="rounded-xl bg-forest px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">PDF einreichen</button>
+        </form>
+        <form onSubmit={submitLink} className="grid gap-3 rounded-2xl border border-line bg-[#fcfbf9] p-4 md:grid-cols-[1fr_1.2fr_auto] md:items-end">
+          <label className="text-xs font-semibold text-ink">Link-Titel<input name="title" required maxLength={120} className="mt-2 w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm" /></label>
+          <label className="text-xs font-semibold text-ink">HTTPS-Adresse<input name="url" type="url" required pattern="https://.*" maxLength={2048} placeholder="https://…" className="mt-2 w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm" /></label>
+          <button disabled={busy} className="rounded-xl bg-forest px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">Link anfragen</button>
+        </form>
+      </div>}
       <div className="mt-4 space-y-3">
         {files.length ? files.map((item) => <article key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-white p-4">
-          <div className="min-w-0"><h3 className="font-semibold text-ink">{item.title}</h3><p className="mt-1 truncate text-sm text-muted">{item.filename} · {item.submitted_by_name}</p><span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle(item.status)}`}>{statusText(item.status)}</span></div>
-          {(item.status === "approved" || role === "admin") && <a href={`/api/v2/files/${item.id}/download`} className="inline-flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-sm font-semibold text-forest"><ArrowDownToLine size={15} /> PDF öffnen</a>}
-          {role === "admin" && item.status === "pending" && <div className="flex gap-2"><button disabled={busy} onClick={() => reviewFile(item.id, "approved")} className="rounded-lg bg-[#e8f4eb] p-2 text-[#2c6948]" aria-label="Datei freigeben"><Check size={18} /></button><button disabled={busy} onClick={() => reviewFile(item.id, "rejected")} className="rounded-lg bg-[#fff0ed] p-2 text-[#9b493e]" aria-label="Datei ablehnen"><X size={18} /></button></div>}
-        </article>) : <EmptyState>Keine Dateianfragen vorhanden.</EmptyState>}
+          <div className="min-w-0">
+            <h3 className="font-semibold text-ink">{item.title}</h3>
+            {item.kind === "pdf"
+              ? <p className="mt-1 truncate text-sm text-muted">{item.filename} · {item.submitted_by_name}</p>
+              : <p className="mt-1 truncate text-sm text-muted">{item.url} · {item.submitted_by_name}</p>}
+            <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle(item.status)}`}>{statusText(item.status)}</span>
+          </div>
+          {item.kind === "pdf" && (item.status === "approved" || role === "admin") && <a href={`/api/v2/files/${item.id}/download`} className="inline-flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-sm font-semibold text-forest"><ArrowDownToLine size={15} /> PDF öffnen</a>}
+          {item.kind === "link" && (item.status === "approved" || role === "admin") && item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-sm font-semibold text-forest"><LinkIcon size={15} /> Link öffnen</a>}
+          {role === "admin" && item.status === "pending" && <div className="flex gap-2"><button disabled={busy} onClick={() => reviewFile(item.id, item.kind, "approved")} className="rounded-lg bg-[#e8f4eb] p-2 text-[#2c6948]" aria-label={item.kind === "link" ? "Link freigeben" : "Datei freigeben"}><Check size={18} /></button><button disabled={busy} onClick={() => reviewFile(item.id, item.kind, "rejected")} className="rounded-lg bg-[#fff0ed] p-2 text-[#9b493e]" aria-label={item.kind === "link" ? "Link ablehnen" : "Datei ablehnen"}><X size={18} /></button></div>}
+        </article>) : <EmptyState>Keine Datei- oder Linkanfragen vorhanden.</EmptyState>}
       </div>
     </section>
   );

@@ -14,14 +14,14 @@ export async function GET(
     const { id } = await context.params;
     let query = supabase()
       .from("v2_file_requests")
-      .select("filename, storage_path, status, submitted_by")
+      .select("kind, filename, storage_path, status, submitted_by")
       .eq("id", id);
     if (session.role !== "admin") {
       query = query.eq("status", "approved");
     }
     const { data: file, error } = await query.maybeSingle();
     if (error) throw error;
-    if (!file) return jsonError("Freigegebene PDF-Datei nicht gefunden.", 404);
+    if (!file || file.kind !== "pdf" || !file.storage_path) return jsonError("Freigegebene PDF-Datei nicht gefunden.", 404);
     const { data, error: downloadError } = await supabase()
       .storage.from("v2-file-requests")
       .download(file.storage_path);

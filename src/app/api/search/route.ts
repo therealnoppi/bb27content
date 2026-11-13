@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     if (term.length < 2) return NextResponse.json({ groups: [] });
     const pattern = `%${term.replace(/[%_\\]/g, " ")}%`;
     const db = supabase();
-    const fileRequestBase = db.from("v2_file_requests").select("id, title, filename, status, submitted_by")
+    const fileRequestBase = db.from("v2_file_requests").select("id, title, kind, filename, url, status, submitted_by")
       .ilike("title", pattern);
     const visibleFileRequestBase = session.role === "member"
       ? fileRequestBase.or(`status.eq.approved,submitted_by.eq.${session.userId}`)
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
         category: "Dokumente",
         items: [
           ...(documents.data ?? []).map((item) => ({ id: item.id, title: item.title, detail: item.filename ?? item.kind, section: "documents" as const })),
-          ...(fileRequests.data ?? []).map((item) => ({ id: item.id, title: item.title, detail: `${item.filename} · ${item.status}`, section: "documents" as const })),
+          ...(fileRequests.data ?? []).map((item) => ({ id: item.id, title: item.title, detail: `${item.kind === "pdf" ? item.filename : item.url} · ${item.status}`, section: "documents" as const })),
         ].slice(0, 8),
       },
       {
