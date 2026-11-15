@@ -299,13 +299,17 @@ textarea:focus-visible {
   }
 }
 
+.roadmap-line-track {
+  background: color-mix(in srgb, var(--color-line) 85%, transparent);
+}
+
 .roadmap-line {
   background: linear-gradient(
     to bottom,
-    rgba(31, 89, 74, 0.28) 0%,
-    rgba(31, 89, 74, 0.15) 70%,
-    rgba(31, 89, 74, 0.04) 100%
+    color-mix(in srgb, var(--color-primary) 78%, transparent),
+    color-mix(in srgb, var(--color-primary) 30%, transparent)
   );
+  transform-origin: top;
 }
 
 .modal-backdrop {
@@ -320,8 +324,57 @@ textarea:focus-visible {
   animation: workspace-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-.roadmap-card {
-  animation: roadmap-card-in 380ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+.authenticated-entry [data-entry="header"] {
+  animation: authenticated-entry-in 800ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.authenticated-entry [data-scroll-entry]:not(.scroll-entry-active) {
+  opacity: 0;
+  animation: none;
+}
+
+.authenticated-entry [data-entry="hero"].scroll-entry-active {
+  animation: authenticated-hero-in 1050ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.authenticated-entry [data-entry="overview"].scroll-entry-active {
+  animation: authenticated-entry-in 800ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.authenticated-entry [data-entry="progress"].scroll-entry-active {
+  animation: authenticated-panel-in 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.authenticated-entry [data-entry="navigation"].scroll-entry-active {
+  animation: authenticated-panel-in 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.authenticated-entry [data-entry="workspace"].scroll-entry-active {
+  animation: authenticated-panel-in 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.authenticated-entry [data-entry="progress"].scroll-entry-active > *,
+.authenticated-entry [data-entry="navigation"].scroll-entry-active > *,
+.authenticated-entry [data-entry="workspace"].scroll-entry-active > * {
+  animation: authenticated-content-in 650ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: 900ms;
+}
+
+.authenticated-entry [data-entry="progress"].scroll-entry-active [data-entry="progress-fill"] {
+  animation: authenticated-progress-fill 650ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transform-origin: left;
+}
+
+.authenticated-entry [data-entry="workspace"].scroll-entry-active .roadmap-phase {
+  animation: roadmap-phase-in 560ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+.authenticated-entry [data-entry="workspace"].scroll-entry-active .roadmap-line-track {
+  animation: roadmap-line-track-in 420ms ease-out both;
+}
+
+.authenticated-entry [data-entry="workspace"].scroll-entry-active .roadmap-line {
+  animation: roadmap-line-draw 800ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 @keyframes fade-in {
@@ -329,14 +382,49 @@ textarea:focus-visible {
   to { opacity: 1; }
 }
 
+@keyframes authenticated-entry-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes authenticated-hero-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes authenticated-panel-in {
+  from { opacity: 0; transform: translateX(36px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes authenticated-content-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes authenticated-progress-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
 @keyframes workspace-in {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes roadmap-card-in {
-  from { opacity: 0; transform: translateY(9px); }
+@keyframes roadmap-phase-in {
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes roadmap-line-track-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes roadmap-line-draw {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
 }
 
 @keyframes panel-in {

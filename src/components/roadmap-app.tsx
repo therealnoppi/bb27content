@@ -128,6 +128,7 @@ async function discardUploadedPdf(storagePath: string) {
 
 export function RoadmapApp() {
   const [role, setRole] = useState<Role | null>(null);
+  const [playEntryAnimation, setPlayEntryAnimation] = useState(false);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -184,11 +185,39 @@ export function RoadmapApp() {
           if (section === "documents" || section === "calendar" || section === "teamchat" || section === "versions" || (section === "access" && session.role === "admin")) {
             setTab(section);
           }
+          setPlayEntryAnimation(true);
           await Promise.all([loadRoadmap(), loadDocuments()]);
         }
       })
       .catch(() => setError("Die Sitzung konnte nicht geprüft werden. Bitte lade die Seite erneut."));
   }, [loadDocuments, loadRoadmap]);
+
+  useEffect(() => {
+    if (!playEntryAnimation) return;
+
+    const targets = document.querySelectorAll<HTMLElement>("[data-scroll-entry]");
+    if (!("IntersectionObserver" in window)) {
+      targets.forEach((target) => target.classList.add("scroll-entry-active"));
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          entry.target.classList.add("scroll-entry-active");
+          observer.unobserve(entry.target);
+        }
+      },
+      { rootMargin: "0px 0px -10% 0px" },
+    );
+
+    targets.forEach((target) => {
+      if (!target.classList.contains("scroll-entry-active")) observer.observe(target);
+    });
+
+    return () => observer.disconnect();
+  }, [playEntryAnimation, tab]);
 
   useEffect(() => {
     if (!selected) return;
@@ -213,6 +242,26 @@ export function RoadmapApp() {
     if (current >= last) return 100;
     return Math.round(((current - first) / (last - first)) * 100);
   }, [steps]);
+  const timeSegments = useMemo(() => {
+    if (steps.length < 2) return [{ id: "timeline", width: 100, fill: progress }];
+
+    const timelineStart = monthStart(steps[0]);
+    const timelineDuration = monthStart(steps.at(-1)!) - timelineStart;
+    if (timelineDuration <= 0) return [{ id: "timeline", width: 100, fill: progress }];
+
+    return steps.slice(0, -1).flatMap((step, index) => {
+      const segmentStart = monthStart(step);
+      const segmentDuration = monthStart(steps[index + 1]) - segmentStart;
+      if (segmentDuration <= 0) return [];
+
+      const elapsedInSegment = (progress / 100) * timelineDuration - (segmentStart - timelineStart);
+      return [{
+        id: step.id,
+        width: (segmentDuration / timelineDuration) * 100,
+        fill: Math.min(100, Math.max(0, (elapsedInSegment / segmentDuration) * 100)),
+      }];
+    });
+  }, [steps, progress]);
   const commenters = useMemo(() => {
     const names = new Map<string, { name: string; count: number }>();
     for (const step of steps) {
@@ -242,6 +291,7 @@ export function RoadmapApp() {
       setTab(section);
     }
     setError("");
+    setPlayEntryAnimation(true);
     await Promise.all([loadRoadmap(), loadDocuments()]);
   }
 
@@ -252,6 +302,7 @@ export function RoadmapApp() {
       if (!response.ok) throw new Error(await responseError(response));
       const data = (await response.json()) as { authenticated: boolean };
       setRole(null);
+      setPlayEntryAnimation(false);
       setDisplayName(null);
       setUserId(null);
       setSelected(null);
@@ -305,6 +356,7 @@ export function RoadmapApp() {
     "--status-yellow": siteConfig.colors.traffic.yellow,
     "--status-red": siteConfig.colors.traffic.red,
   } as React.CSSProperties;
+  const roadmapLineDelay = 900 + Math.max(steps.length - 1, 0) * 210 + 560;
 
   if (!role) {
     return (
@@ -318,9 +370,9 @@ export function RoadmapApp() {
   }
 
   return (
-    <main className="min-h-screen pb-16" style={cssVars}>
+    <main className={`min-h-screen pb-16 ${playEntryAnimation ? "authenticated-entry" : ""}`} style={cssVars}>
       <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line/80 py-5">
+        <header data-entry="header" className="flex flex-wrap items-center justify-between gap-3 border-b border-line/80 py-5">
           <a href="#" className="flex items-center gap-3" aria-label={`${siteConfig.name} Startseite`}>
             <Image className="h-10 w-10" src={siteConfig.logo} alt="" width={40} height={40} unoptimized />
             <span className="text-sm font-bold tracking-[0.16em] text-ink">
@@ -348,7 +400,7 @@ export function RoadmapApp() {
           </div>
         </header>
 
-        <section className="relative mt-9 min-h-[330px] overflow-hidden rounded-[30px] bg-forest px-7 py-9 text-white shadow-card sm:min-h-[370px] sm:px-11 sm:py-12">
+        <section data-entry="hero" data-scroll-entry className="relative mt-9 min-h-[330px] overflow-hidden rounded-[30px] bg-forest px-7 py-9 text-white shadow-card sm:min-h-[370px] sm:px-11 sm:py-12">
           <Image
             src={siteConfig.heroImage}
             alt=""
@@ -388,7 +440,7 @@ export function RoadmapApp() {
 
         {error && <Notice message={error} onClose={() => setError("")} />}
 
-        <section className="mt-7 grid gap-4">
+        <section data-entry="overview" data-scroll-entry className="mt-7 grid gap-4">
           <div className="rounded-[22px] border border-line bg-white p-6">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted">Statusübersicht</p>
             <div className="mt-5 space-y-4">
@@ -424,7 +476,7 @@ export function RoadmapApp() {
           </div>
         </section>
 
-        <section className="mt-8 rounded-[26px] border border-line bg-white/80 p-5 shadow-sm sm:p-7">
+        <section data-entry="progress" data-scroll-entry className="mt-8 rounded-[26px] border border-line bg-white/80 p-5 shadow-sm sm:p-7">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted">Produktionsfortschritt</p>
@@ -437,11 +489,31 @@ export function RoadmapApp() {
               <span className="ml-1.5 text-xs text-muted">des Zeitplans</span>
             </div>
           </div>
-          <div className="mt-5 h-2 overflow-hidden rounded-full bg-[#edf0eb]">
-            <div
-              className="h-full rounded-full bg-forest transition-[width] duration-700"
-              style={{ width: `${progress}%` }}
-            />
+          <div
+            role="progressbar"
+            aria-label="Zeitplanfortschritt"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress}
+            className="mt-5 flex h-2 gap-[2px]"
+          >
+            {timeSegments.map((segment, index) => (
+              <span
+                key={segment.id}
+                aria-hidden="true"
+                className="relative min-w-0 overflow-hidden rounded-sm bg-[#edf0eb]"
+                style={{ flex: `${segment.width} 1 0%` }}
+              >
+                <span
+                  className="absolute inset-y-0 left-0 rounded-r-full bg-forest"
+                  data-entry="progress-fill"
+                  style={{
+                    width: `${segment.fill}%`,
+                    animationDelay: `${900 + index * 240}ms`,
+                  }}
+                />
+              </span>
+            ))}
           </div>
           <div className="mt-2 flex justify-between text-[11px] text-muted">
             <span>{steps[0] ? monthLabel(steps[0].month, steps[0].year) : "Start"}</span>
@@ -449,7 +521,7 @@ export function RoadmapApp() {
           </div>
         </section>
 
-        <nav className="hide-scrollbar mt-10 flex min-w-0 max-w-full gap-2 overflow-x-auto overflow-y-hidden border-b border-line" aria-label="Projektbereiche">
+        <nav data-entry="navigation" data-scroll-entry className="hide-scrollbar mt-10 flex min-w-0 max-w-full gap-2 overflow-x-auto overflow-y-hidden border-b border-line" aria-label="Projektbereiche">
           <TabButton active={tab === "roadmap"} onClick={() => navigateToSection("roadmap")}>Roadmap</TabButton>
           <TabButton active={tab === "documents"} onClick={() => navigateToSection("documents")}>Dokumentenablage</TabButton>
           <TabButton active={tab === "calendar"} onClick={() => navigateToSection("calendar")}>Kalender</TabButton>
@@ -461,7 +533,7 @@ export function RoadmapApp() {
           </span>
         </nav>
 
-        <div key={tab} className="workspace-transition">
+        <div data-entry="workspace" data-scroll-entry key={tab} className="workspace-transition">
           <VersionCenter role={role} active={tab === "versions"} />
 
           {tab === "roadmap" ? (
@@ -475,19 +547,35 @@ export function RoadmapApp() {
                   <span className="hidden text-xs text-muted sm:block">Phase auswählen und Details ansehen</span>
                 </div>
                 <div className="relative space-y-4 pl-9 sm:pl-12">
-                  <div className="roadmap-line absolute bottom-7 left-[11px] top-8 w-px sm:left-[15px]" />
+                  {steps.length > 0 && (
+                    <>
+                      <div
+                        aria-hidden="true"
+                        className="roadmap-line-track absolute bottom-7 left-[11px] top-8 w-[2px] rounded-full sm:left-[18px]"
+                        style={{ animationDelay: `${roadmapLineDelay}ms` }}
+                      />
+                      <div
+                        aria-hidden="true"
+                        className="roadmap-line absolute bottom-7 left-[11px] top-8 w-[2px] rounded-full sm:left-[18px]"
+                        style={{ animationDelay: `${roadmapLineDelay + 240}ms` }}
+                      />
+                    </>
+                  )}
                   {steps.map((step, index) => {
                     const Icon = iconMap[step.icon];
                     const isPast = monthStart(step) < new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
                     return (
-                      <div className="relative" key={step.id}>
+                      <div
+                        className="roadmap-phase relative"
+                        key={step.id}
+                        style={{ animationDelay: `${900 + index * 210}ms` }}
+                      >
                         <span className={`absolute -left-[36px] top-7 grid h-[24px] w-[24px] place-items-center rounded-full border-[5px] border-canvas bg-white shadow-sm sm:-left-[44px] sm:h-[30px] sm:w-[30px]`}>
                           <span className={`h-2.5 w-2.5 rounded-full status-${step.status}`} />
                         </span>
                         <button
                           onClick={() => setSelected(step)}
-                          style={{ animationDelay: `${Math.min(index, 6) * 55}ms` }}
-                          className="roadmap-card group w-full rounded-[22px] border border-line bg-white p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[#cbd9ce] hover:shadow-card active:translate-y-0 sm:p-6"
+                          className="group w-full rounded-[22px] border border-line bg-white p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[#cbd9ce] hover:shadow-card active:translate-y-0 sm:p-6"
                         >
                           <div className="flex items-start gap-4">
                             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#eff5ef] text-forest transition group-hover:bg-lime">
