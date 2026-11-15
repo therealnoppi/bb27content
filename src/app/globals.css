@@ -324,6 +324,10 @@ textarea:focus-visible {
   animation: workspace-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
+.entry-paused .workspace-transition {
+  animation: none !important;
+}
+
 .authenticated-entry [data-entry="header"] {
   animation: authenticated-entry-in 800ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }

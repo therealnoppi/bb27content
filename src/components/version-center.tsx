@@ -86,11 +86,22 @@ function categoryIcon(category: ChangeCategory) {
   return ClipboardList;
 }
 
-export function VersionCenter({ role, active }: { role: Role; active: boolean }) {
+export function VersionCenter({
+  role,
+  active,
+  canShowAnnouncement,
+  onAnnouncementStatusChange,
+}: {
+  role: Role;
+  active: boolean;
+  canShowAnnouncement: boolean;
+  onAnnouncementStatusChange: (status: "checking" | "open" | "closed") => void;
+}) {
   const [releases, setReleases] = useState<Release[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showAnnouncement, setShowAnnouncement] = useState(false);
+  const [hasUnreadAnnouncement, setHasUnreadAnnouncement] = useState<boolean | null>(null);
   const [markingRead, setMarkingRead] = useState(false);
 
   const loadReleases = useCallback(async () => {
@@ -98,13 +109,20 @@ export function VersionCenter({ role, active }: { role: Role; active: boolean })
       const data = await requestJson<{ releases: Release[] }>("/api/versions");
       setReleases(data.releases);
       setError("");
-      setShowAnnouncement(data.releases.some((release) => release.published_at && !release.is_read));
+      setHasUnreadAnnouncement(data.releases.some((release) => release.published_at && !release.is_read));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Versionshinweise konnten nicht geladen werden.");
+      setHasUnreadAnnouncement(false);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!canShowAnnouncement || hasUnreadAnnouncement === null) return;
+    setShowAnnouncement(hasUnreadAnnouncement);
+    onAnnouncementStatusChange(hasUnreadAnnouncement ? "open" : "closed");
+  }, [canShowAnnouncement, hasUnreadAnnouncement, onAnnouncementStatusChange]);
 
   useEffect(() => {
     void loadReleases();
@@ -126,6 +144,8 @@ export function VersionCenter({ role, active }: { role: Role; active: boolean })
     const unread = releases.filter((release) => release.published_at && !release.is_read);
     if (!unread.length) {
       setShowAnnouncement(false);
+      setHasUnreadAnnouncement(false);
+      onAnnouncementStatusChange("closed");
       return;
     }
     setMarkingRead(true);
@@ -136,6 +156,8 @@ export function VersionCenter({ role, active }: { role: Role; active: boolean })
         body: JSON.stringify({ release_ids: unread.map((release) => release.id) }),
       });
       setShowAnnouncement(false);
+      setHasUnreadAnnouncement(false);
+      onAnnouncementStatusChange("closed");
       await loadReleases();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Der Lesestatus konnte nicht gespeichert werden.");

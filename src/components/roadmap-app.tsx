@@ -129,6 +129,8 @@ async function discardUploadedPdf(storagePath: string) {
 export function RoadmapApp() {
   const [role, setRole] = useState<Role | null>(null);
   const [playEntryAnimation, setPlayEntryAnimation] = useState(false);
+  const [announcementStatus, setAnnouncementStatus] = useState<"checking" | "open" | "closed">("checking");
+  const [initialContentReady, setInitialContentReady] = useState(false);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -141,6 +143,10 @@ export function RoadmapApp() {
   const [feedback, setFeedback] = useState("");
   const [activityRefresh, setActivityRefresh] = useState(0);
   const refreshActivity = useCallback(() => setActivityRefresh((current) => current + 1), []);
+  const handleAnnouncementStatusChange = useCallback(
+    (status: "checking" | "open" | "closed") => setAnnouncementStatus(status),
+    [],
+  );
   const navigateToSection = useCallback((section: Tab, target?: string) => {
     setTab(section);
     setChatTargetId(section === "teamchat" ? target : undefined);
@@ -185,12 +191,30 @@ export function RoadmapApp() {
           if (section === "documents" || section === "calendar" || section === "teamchat" || section === "versions" || (section === "access" && session.role === "admin")) {
             setTab(section);
           }
-          setPlayEntryAnimation(true);
           await Promise.all([loadRoadmap(), loadDocuments()]);
+          setInitialContentReady(true);
         }
       })
       .catch(() => setError("Die Sitzung konnte nicht geprüft werden. Bitte lade die Seite erneut."));
   }, [loadDocuments, loadRoadmap]);
+
+  useEffect(() => {
+    if (role && announcementStatus === "closed") setPlayEntryAnimation(true);
+  }, [announcementStatus, role]);
+
+  useEffect(() => {
+    if (!role || announcementStatus === "closed") return;
+
+    const root = document.documentElement;
+    const previousRootOverflow = root.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    root.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      root.style.overflow = previousRootOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [announcementStatus, role]);
 
   useEffect(() => {
     if (!playEntryAnimation) return;
@@ -291,8 +315,8 @@ export function RoadmapApp() {
       setTab(section);
     }
     setError("");
-    setPlayEntryAnimation(true);
     await Promise.all([loadRoadmap(), loadDocuments()]);
+    setInitialContentReady(true);
   }
 
   async function logout() {
@@ -303,6 +327,8 @@ export function RoadmapApp() {
       const data = (await response.json()) as { authenticated: boolean };
       setRole(null);
       setPlayEntryAnimation(false);
+      setAnnouncementStatus("checking");
+      setInitialContentReady(false);
       setDisplayName(null);
       setUserId(null);
       setSelected(null);
@@ -370,7 +396,10 @@ export function RoadmapApp() {
   }
 
   return (
-    <main className={`min-h-screen pb-16 ${playEntryAnimation ? "authenticated-entry" : ""}`} style={cssVars}>
+    <main
+      className={`min-h-screen pb-16 ${playEntryAnimation ? "authenticated-entry" : ""} ${role && !playEntryAnimation && announcementStatus !== "closed" ? "entry-paused" : ""}`}
+      style={cssVars}
+    >
       <div className="mx-auto max-w-[1240px] px-5 sm:px-8">
         <header data-entry="header" className="flex flex-wrap items-center justify-between gap-3 border-b border-line/80 py-5">
           <a href="#" className="flex items-center gap-3" aria-label={`${siteConfig.name} Startseite`}>
@@ -534,7 +563,12 @@ export function RoadmapApp() {
         </nav>
 
         <div data-entry="workspace" data-scroll-entry key={tab} className="workspace-transition">
-          <VersionCenter role={role} active={tab === "versions"} />
+          <VersionCenter
+            role={role}
+            active={tab === "versions"}
+            canShowAnnouncement={initialContentReady}
+            onAnnouncementStatusChange={handleAnnouncementStatusChange}
+          />
 
           {tab === "roadmap" ? (
             <section className="grid gap-8 pt-8 lg:grid-cols-[minmax(0,1fr)_300px]">
