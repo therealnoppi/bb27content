@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type Theme = "light" | "dark" | "system";
 type Section = "roadmap" | "documents" | "calendar" | "access" | "teamchat";
@@ -129,13 +130,20 @@ export function WorkspaceTools({
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
   const [noticeError, setNoticeError] = useState("");
+  const [popupRoot, setPopupRoot] = useState<HTMLElement | null>(null);
+  const notificationLoadVersionRef = useRef(0);
   const desktopSearchInputRef = useRef<HTMLInputElement>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement>(null);
   const mobileSearchRef = useRef<HTMLDivElement>(null);
   const desktopSearchRef = useRef<HTMLDivElement>(null);
+  const searchPopupRef = useRef<HTMLDivElement>(null);
   const noticeButtonRef = useRef<HTMLButtonElement>(null);
   const [searchPosition, setSearchPosition] = useState<PopupPosition | null>(null);
   const [noticePosition, setNoticePosition] = useState<PopupPosition | null>(null);
+
+  useEffect(() => {
+    setPopupRoot(document.body);
+  }, []);
 
   const focusSearchInput = useCallback(() => {
     const input = window.matchMedia("(min-width: 768px)").matches
@@ -147,6 +155,24 @@ export function WorkspaceTools({
   useEffect(() => {
     onMobileSearchExpandedChange(searchOpen);
   }, [onMobileSearchExpandedChange, searchOpen]);
+
+  useEffect(() => {
+    if (!searchOpen || query.trim()) return;
+
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (
+        desktopSearchRef.current?.contains(target)
+        || mobileSearchRef.current?.contains(target)
+        || searchPopupRef.current?.contains(target)
+      ) return;
+      setSearchOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handleOutsidePointerDown);
+    return () => document.removeEventListener("pointerdown", handleOutsidePointerDown);
+  }, [query, searchOpen]);
 
   useEffect(() => {
     if (!searchOpen && !noticeOpen) return;
@@ -173,13 +199,17 @@ export function WorkspaceTools({
   }, [noticeOpen, searchOpen]);
 
   const loadNotifications = useCallback(async () => {
+    const requestVersion = ++notificationLoadVersionRef.current;
     try {
       const data = await requestJson<{ notifications: Notification[]; unreadCount: number }>("/api/notifications");
+      if (requestVersion !== notificationLoadVersionRef.current) return;
       setNotifications(data.notifications);
       setUnread(data.unreadCount);
       setNoticeError("");
     } catch (cause) {
-      setNoticeError(cause instanceof Error ? cause.message : "Benachrichtigungen konnten nicht geladen werden.");
+      if (requestVersion === notificationLoadVersionRef.current) {
+        setNoticeError(cause instanceof Error ? cause.message : "Benachrichtigungen konnten nicht geladen werden.");
+      }
     }
   }, []);
 
@@ -243,13 +273,19 @@ export function WorkspaceTools({
   }, [loadNotifications]);
 
   async function markRead(id?: string) {
-    if (!unread) return;
+    notificationLoadVersionRef.current += 1;
     try {
       await requestJson("/api/notifications", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(id ? { id } : { all: true }),
       });
+      const wasUnread = !id || notifications.some((item) => item.id === id && !item.read_at);
+      setNotifications((current) => current.map((item) => !id || item.id === id
+        ? { ...item, read_at: item.read_at ?? new Date().toISOString() }
+        : item));
+      if (!id) setUnread(0);
+      else if (wasUnread) setUnread((current) => Math.max(0, current - 1));
       await loadNotifications();
     } catch (cause) {
       setNoticeError(cause instanceof Error ? cause.message : "Benachrichtigungen konnten nicht aktualisiert werden.");
@@ -322,7 +358,7 @@ export function WorkspaceTools({
           <Bell size={16} />
           {unread > 0 && <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#b34335] px-1 text-center text-[9px] font-bold leading-4 text-white">{unread > 99 ? "99+" : unread}</span>}
         </button>
-        {noticeOpen && noticePosition && (
+        {popupRoot && noticeOpen && noticePosition && createPortal(
           <div
             className="fixed z-40 overflow-hidden rounded-2xl border border-line bg-white shadow-float"
             style={{ left: noticePosition.left, top: noticePosition.top, width: noticePosition.width, maxHeight: noticePosition.maxHeight }}
@@ -344,32 +380,37 @@ export function WorkspaceTools({
                 </button>
               ))}
             </div>
-          </div>
+          </div>,
+          popupRoot,
         )}
       </div>
       <ThemeSelector role={role} />
 
       {searchOpen && (
-        searchPosition && <div
-          className="fixed z-40 overflow-hidden rounded-2xl border border-line bg-white shadow-float"
-          style={{ left: searchPosition.left, top: searchPosition.top, width: searchPosition.width, maxHeight: searchPosition.maxHeight }}
-        >
-          {searchBusy && <div className="flex items-center gap-2 px-4 py-4 text-xs text-muted"><LoaderCircle size={14} className="animate-spin" />Suche läuft …</div>}
-          {searchError && <p role="alert" className="px-4 py-4 text-xs text-[#b34335]">{searchError}</p>}
-          {!searchBusy && !searchError && query.trim().length < 2 && <p className="px-4 py-5 text-xs text-muted">Gib mindestens zwei Zeichen ein, um Roadmap, Kommentare, Dokumente, Kalender und Teamchat zu durchsuchen.</p>}
-          {!searchBusy && query.trim().length >= 2 && groups.length === 0 && !searchError && <p className="px-4 py-6 text-center text-xs text-muted">Keine passenden Inhalte gefunden.</p>}
-          <div className="overflow-y-auto" style={{ maxHeight: Math.min(480, window.innerHeight * 0.65, Math.max(0, searchPosition.maxHeight - 12)) }}>
-            {groups.map((group) => (
-              <section key={group.category} className="border-b border-line/70 last:border-0">
-                <h3 className="px-4 pb-1 pt-3 text-[10px] font-bold uppercase tracking-wider text-muted">{group.category}</h3>
-                {group.items.map((item) => <button key={`${group.category}-${item.id}`} onClick={() => chooseResult(item)} className="block w-full px-4 py-2.5 text-left hover:bg-canvas">
-                  <span className="block text-xs font-semibold text-ink">{highlight(item.title, query)}</span>
-                  <span className="mt-0.5 block line-clamp-2 text-[11px] leading-4 text-muted">{highlight(item.detail, query)}</span>
-                </button>)}
-              </section>
-            ))}
-          </div>
-        </div>
+        popupRoot && searchPosition && createPortal(
+          <div
+            ref={searchPopupRef}
+            className="fixed z-40 overflow-hidden rounded-2xl border border-line bg-white shadow-float"
+            style={{ left: searchPosition.left, top: searchPosition.top, width: searchPosition.width, maxHeight: searchPosition.maxHeight }}
+          >
+            {searchBusy && <div className="flex items-center gap-2 px-4 py-4 text-xs text-muted"><LoaderCircle size={14} className="animate-spin" />Suche läuft …</div>}
+            {searchError && <p role="alert" className="px-4 py-4 text-xs text-[#b34335]">{searchError}</p>}
+            {!searchBusy && !searchError && query.trim().length < 2 && <p className="px-4 py-5 text-xs text-muted">Gib mindestens zwei Zeichen ein, um Roadmap, Kommentare, Dokumente, Kalender und Teamchat zu durchsuchen.</p>}
+            {!searchBusy && query.trim().length >= 2 && groups.length === 0 && !searchError && <p className="px-4 py-6 text-center text-xs text-muted">Keine passenden Inhalte gefunden.</p>}
+            <div className="overflow-y-auto" style={{ maxHeight: Math.min(480, window.innerHeight * 0.65, Math.max(0, searchPosition.maxHeight - 12)) }}>
+              {groups.map((group) => (
+                <section key={group.category} className="border-b border-line/70 last:border-0">
+                  <h3 className="px-4 pb-1 pt-3 text-[10px] font-bold uppercase tracking-wider text-muted">{group.category}</h3>
+                  {group.items.map((item) => <button key={`${group.category}-${item.id}`} onClick={() => chooseResult(item)} className="block w-full px-4 py-2.5 text-left hover:bg-canvas">
+                    <span className="block text-xs font-semibold text-ink">{highlight(item.title, query)}</span>
+                    <span className="mt-0.5 block line-clamp-2 text-[11px] leading-4 text-muted">{highlight(item.detail, query)}</span>
+                  </button>)}
+                </section>
+              ))}
+            </div>
+          </div>,
+          popupRoot,
+        )
       )}
       {role === "admin" && <span className="sr-only">Administratorkonto</span>}
     </div>
